@@ -1,0 +1,2374 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>小肥鱼帮你做作业 · 课业提醒</title>
+<style>
+:root{
+  --bg:#0E1116; --surface:#161B22; --surface2:#1E252E; --stroke:#283039;
+  --on:#E6EDF3; --muted:#8B99A8; --accent:#4CC2FF; --accent-dim:rgba(76,194,255,.20);
+  --ok:#3FD08A; --warn:#FFB020; --danger:#FF6B6B;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{height:100%}
+body{
+  margin:0;color:var(--on);
+  background:
+    radial-gradient(74% 50% at 50% -12%, rgba(96,168,240,.26), rgba(96,168,240,0) 72%),
+    radial-gradient(120% 70% at 50% 0%, rgba(52,96,150,.20), rgba(52,96,150,0) 70%),
+    var(--bg);
+  background-attachment:fixed;
+  font-family:"Microsoft YaHei UI","Microsoft YaHei","PingFang SC",-apple-system,"Segoe UI",sans-serif;
+  font-size:14px;line-height:1.55;
+}
+/* 开机动画结束 → 主界面淡入，蓝色天光顺延到页面顶部，过渡不突兀 */
+body.revealed .page{animation:viewIn .66s cubic-bezier(.22,.8,.2,1) both}
+@keyframes viewIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+button{font-family:inherit;cursor:pointer}
+input,textarea,select{font-family:inherit}
+::-webkit-scrollbar{width:10px;height:10px}
+::-webkit-scrollbar-thumb{background:#2A323C;border-radius:6px}
+::-webkit-scrollbar-track{background:transparent}
+.hide{display:none !important}
+
+/* ---------- 开机动画（5s）：浅蓝到深蓝天光，中间是角色 ---------- */
+#splash{
+  position:fixed;inset:0;width:100vw;height:100vh;z-index:999;overflow:hidden;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  background:#0B1A2E;
+  transition:opacity .5s cubic-bezier(.4,0,.2,1), transform .5s cubic-bezier(.4,0,.2,1),
+             filter .5s ease;
+  will-change:opacity,transform;
+}
+/* 第二阶段：一层深蓝慢慢盖上来，把角色「化」进背景，再整体淡出让主页浮出 */
+#splash::after{content:"";position:absolute;inset:0;z-index:6;pointer-events:none;
+  background:var(--bg);opacity:0;transition:opacity .85s ease}
+#splash.phase2::after{opacity:.97}
+#splash.phase2{transition:opacity 1s cubic-bezier(.4,0,.2,1), filter .9s ease;
+  filter:saturate(1.04) brightness(.99)}
+#splash.out{opacity:0;filter:blur(1px);pointer-events:none}
+
+/* 天光：中心浅蓝 → 边缘深蓝，缓慢呼吸推进 */
+#splash .sky{
+  position:absolute;inset:-12%;
+  background:
+    radial-gradient(54% 44% at 50% 39%, #D6ECFF 0%, #A9D6F8 13%, #74AEDF 29%,
+                    #4276AE 48%, #1D4067 69%, #0B1A2E 92%),
+    linear-gradient(180deg,#102540,#0A1522);
+  animation:skyIn 5s ease-in-out both;
+}
+@keyframes skyIn{
+  0%{transform:scale(1.16);filter:brightness(.72) saturate(.85);opacity:.55}
+  26%{transform:scale(1.04);filter:brightness(1.08) saturate(1.06);opacity:1}
+  62%{transform:scale(1.0);filter:brightness(1.02) saturate(1.0)}
+  100%{transform:scale(1.07);filter:brightness(.88) saturate(.95)}
+}
+/* 两团飘动的光雾，让静止背景有呼吸感 */
+#splash .mist{position:absolute;border-radius:50%;filter:blur(58px);opacity:.55;pointer-events:none}
+#splash .mist.a{width:52vw;height:52vw;left:-12vw;top:-16vw;
+  background:radial-gradient(circle,#BFE3FF,rgba(191,227,255,0) 70%);animation:driftA 9s ease-in-out infinite alternate}
+#splash .mist.b{width:46vw;height:46vw;right:-14vw;bottom:-18vw;
+  background:radial-gradient(circle,#3D7FC4,rgba(61,127,196,0) 70%);animation:driftB 11s ease-in-out infinite alternate}
+@keyframes driftA{from{transform:translate3d(0,0,0) scale(1)}to{transform:translate3d(5vw,3vw,0) scale(1.12)}}
+@keyframes driftB{from{transform:translate3d(0,0,0) scale(1.06)}to{transform:translate3d(-4vw,-3vw,0) scale(.96)}}
+
+/* 上升的小气泡 */
+.bubble{position:absolute;bottom:-48px;border-radius:50%;pointer-events:none;
+  background:radial-gradient(circle at 32% 30%,rgba(255,255,255,.95),rgba(186,226,255,.42) 46%,rgba(120,180,240,0) 72%);
+  animation-name:rise;animation-timing-function:linear;animation-fill-mode:forwards}
+@keyframes rise{
+  0%{transform:translate3d(0,0,0) scale(.65);opacity:0}
+  14%{opacity:.9}
+  70%{opacity:.7}
+  100%{transform:translate3d(26px,-112vh,0) scale(1.2);opacity:0}
+}
+
+/* 舞台 */
+#splash .stage{position:relative;z-index:2;display:flex;flex-direction:column;align-items:center;
+  animation:stageIn 1s cubic-bezier(.19,1,.22,1) both}
+@keyframes stageIn{from{opacity:0;transform:translateY(16px) scale(.94)}to{opacity:1;transform:none}}
+
+.avatar-wrap.noimg::before{content:"";position:absolute;inset:6%;border-radius:50%;background:radial-gradient(circle at 34% 28%, #7FB6F0, #2C6FB8 62%, #1B4677);box-shadow:inset 0 0 40px rgba(255,255,255,.35)}
+.avatar-wrap{position:relative;width:clamp(190px,17vw,300px);aspect-ratio:1/1;
+  animation:floaty 3.8s ease-in-out 1s infinite}
+@keyframes floaty{0%,100%{transform:translateY(0)}50%{transform:translateY(-9px)}}
+.avatar-wrap .glow{position:absolute;inset:-18%;border-radius:50%;
+  background:radial-gradient(circle,rgba(150,205,255,.55),rgba(120,180,240,.12) 55%,rgba(120,180,240,0) 72%);
+  animation:glowPulse 3.6s ease-in-out infinite}
+@keyframes glowPulse{0%,100%{opacity:.55;transform:scale(.96)}50%{opacity:.95;transform:scale(1.06)}}
+.avatar-wrap .ring{position:absolute;left:50%;top:50%;width:100%;height:100%;margin:-50% 0 0 -50%;
+  border-radius:50%;border:1.5px solid rgba(214,236,255,.55);opacity:0;
+  animation:emit 3.2s cubic-bezier(.22,.8,.2,1) infinite}
+.avatar-wrap .ring.r2{animation-delay:1.6s}
+@keyframes emit{0%{transform:scale(1);opacity:.7}70%{opacity:.14}100%{transform:scale(1.75);opacity:0}}
+.avatar-wrap img{position:relative;display:block;width:100%;height:100%;border-radius:50%;
+  object-fit:cover;
+  box-shadow:0 20px 54px rgba(6,20,40,.55), 0 0 0 6px rgba(255,255,255,.13),
+             0 0 70px rgba(130,196,255,.55),
+             inset 0 0 0 2px rgba(255,255,255,.26), inset 0 0 26px rgba(228,244,255,.22);
+  animation:avatarIn 1.15s cubic-bezier(.19,1,.22,1) both}
+@keyframes avatarIn{from{opacity:0;transform:scale(.82) rotate(-4deg)}to{opacity:1;transform:none}}
+/* 掠过角色的一束光 */
+.avatar-wrap .sweep{position:absolute;inset:0;border-radius:50%;overflow:hidden;pointer-events:none}
+.avatar-wrap .sweep i{position:absolute;top:-60%;left:-70%;width:46%;height:220%;
+  background:linear-gradient(90deg,rgba(255,255,255,0),rgba(255,255,255,.42),rgba(255,255,255,0));
+  transform:rotate(18deg);animation:sweep 4.6s cubic-bezier(.4,0,.2,1) .8s infinite}
+@keyframes sweep{0%{left:-70%}26%,100%{left:128%}}
+
+.boot-name{margin-top:24px;font-size:22px;font-weight:700;letter-spacing:2.5px;color:#F2F9FF;
+  text-shadow:0 2px 18px rgba(40,110,180,.55);
+  animation:fadeUp .8s cubic-bezier(.22,.8,.2,1) .35s both}
+.boot-sub{margin-top:9px;font-size:12.5px;letter-spacing:1.6px;color:rgba(224,240,255,.74);
+  animation:fadeUp .8s cubic-bezier(.22,.8,.2,1) .55s both}
+@keyframes fadeUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+
+.boot-bar{margin-top:26px;width:152px;height:3px;border-radius:99px;
+  background:rgba(255,255,255,.16);overflow:hidden;
+  animation:fadeUp .8s cubic-bezier(.22,.8,.2,1) .7s both}
+.boot-bar i{display:block;height:100%;width:0;border-radius:99px;
+  background:linear-gradient(90deg,rgba(190,230,255,.9),#4CC2FF);
+  box-shadow:0 0 12px rgba(76,194,255,.7);
+  animation:barFill 4.55s cubic-bezier(.32,.72,.28,1) .25s forwards}
+@keyframes barFill{0%{width:0}55%{width:62%}80%{width:84%}100%{width:100%}}
+
+/* ---------- 通用 ---------- */
+.page{max-width:960px;margin:0 auto;padding:18px 18px 90px}
+.topbar{display:flex;align-items:center;gap:12px;padding:14px 18px;
+  background:rgba(14,17,22,.92);backdrop-filter:blur(8px);border-bottom:1px solid var(--stroke);
+  position:sticky;top:0;z-index:20}
+.topbar h1{font-size:19px;margin:0;font-weight:700;letter-spacing:1px}
+.topbar .spacer{flex:1}
+.btn{border:1px solid var(--stroke);background:var(--surface2);color:var(--on);
+  border-radius:12px;padding:9px 16px;font-size:13px;transition:.15s}
+.btn:hover{border-color:var(--accent);color:var(--accent)}
+.btn.primary{background:var(--accent);color:#04222F;border-color:var(--accent);font-weight:700}
+.btn.primary:hover{filter:brightness(1.08);color:#04222F}
+.btn.ghost{background:transparent}
+.btn.small{padding:6px 12px;font-size:12px;border-radius:10px}
+.btn.danger{border-color:rgba(255,107,107,.45);color:var(--danger)}
+.btn.danger:hover{background:rgba(255,107,107,.12)}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.card{background:var(--surface);border:1px solid var(--stroke);border-radius:18px;padding:16px 18px}
+.muted{color:var(--muted)}
+.row{display:flex;align-items:center;gap:10px}
+.grow{flex:1}
+h2{font-size:15px;margin:0 0 6px}
+.hr{height:1px;background:var(--stroke);margin:16px 0}
+
+/* ---------- 统计 ---------- */
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:16px 0}
+.stat{background:var(--surface);border:1px solid var(--stroke);border-radius:16px;
+  padding:14px 16px;text-align:center}
+.stat b{display:block;font-size:26px;font-weight:700;line-height:1.2}
+.stat span{color:var(--muted);font-size:12px}
+.stat.done b{color:var(--ok)}
+.stat.open b{color:var(--accent)}
+.stat.today b{color:var(--warn)}
+
+/* ---------- 筛选 ---------- */
+.chips{display:flex;gap:10px;margin:4px 0 14px}
+.chip{border:1px solid var(--stroke);background:transparent;color:var(--muted);
+  border-radius:999px;padding:7px 18px;font-size:13px;transition:.15s}
+.chip.on{background:var(--accent-dim);border-color:var(--accent);color:var(--accent);font-weight:600}
+
+/* ---------- 任务列表 ---------- */
+.list{display:flex;flex-direction:column;gap:10px}
+.task{background:var(--surface);border:1px solid var(--stroke);border-radius:16px;
+  padding:14px 16px;cursor:pointer;transition:.15s;position:relative}
+.task:hover{border-color:#3A4756;transform:translateY(-1px)}
+.task.done{opacity:.62}
+.task .c{font-size:12px;color:var(--muted);margin-bottom:3px}
+.task .t{font-size:15px;font-weight:600;line-height:1.45;padding-right:64px;word-break:break-all}
+.task .m{margin-top:8px;font-size:12.5px;color:var(--accent)}
+.task .m.overdue{color:var(--danger)}
+.task .m.muted{color:var(--muted)}
+.badge{position:absolute;right:14px;top:14px;font-size:11.5px;padding:3px 10px;
+  border-radius:999px;border:1px solid}
+.badge.open{color:var(--accent);border-color:rgba(76,194,255,.45);background:rgba(76,194,255,.10)}
+.badge.done{color:var(--ok);border-color:rgba(63,208,138,.45);background:rgba(63,208,138,.10)}
+.empty{text-align:center;padding:56px 20px;color:var(--muted)}
+.empty .big{font-size:44px;margin-bottom:12px;opacity:.55}
+.empty p{margin:6px 0}
+
+
+/* ---------- 外观：玻璃材质 / 排版 / 地面光斑 ---------- */
+body{
+  --g-alpha:.16; --g-blur:14px; --g-sat:1.15;
+  --g-brd:rgba(255,255,255,.10); --g-shadow:0 10px 28px rgba(0,0,0,.32);
+}
+body[data-glass="clear"]{--g-alpha:.07;--g-blur:6px;--g-sat:1.4}
+body[data-glass="std"]{--g-alpha:.17;--g-blur:16px;--g-sat:1.15;
+  --g-brd:rgba(255,255,255,.10);--g-shadow:0 12px 30px rgba(0,0,0,.34)}
+body[data-glass="frost"]{--g-alpha:.30;--g-blur:30px;--g-sat:.95;
+  --g-brd:rgba(255,255,255,.07);--g-shadow:0 18px 46px rgba(0,0,0,.46)}
+
+.task,.stat,.card{
+  background-color:rgba(22,28,36,var(--g-alpha));
+  border:1px solid var(--g-brd);
+  -webkit-backdrop-filter:blur(var(--g-blur)) saturate(var(--g-sat));
+  backdrop-filter:blur(var(--g-blur)) saturate(var(--g-sat));
+  box-shadow:var(--g-shadow), inset 0 1px 0 rgba(255,255,255,.07);
+  background-image:linear-gradient(150deg,rgba(255,255,255,.05),rgba(255,255,255,0) 44%);
+}
+.modal{
+  background-color:rgba(20,26,34,calc(var(--g-alpha) + .22));
+  border:1px solid var(--g-brd);
+  -webkit-backdrop-filter:blur(calc(var(--g-blur) + 6px)) saturate(var(--g-sat));
+  backdrop-filter:blur(calc(var(--g-blur) + 6px)) saturate(var(--g-sat));
+  box-shadow:0 30px 70px rgba(0,0,0,.55), inset 0 1px 0 rgba(255,255,255,.08);
+}
+
+/* 原版排版：官方列表，平铺玻璃 */
+body[data-layout="official"] .list{display:flex;flex-direction:column;gap:10px}
+body[data-layout="official"] .task{border-radius:14px;padding:14px 16px}
+body[data-layout="official"] .task:hover{transform:none;border-color:rgba(255,255,255,.2)}
+
+/* 云母：悬浮磨砂卡片 */
+body[data-layout="mica"] .list{
+  display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));
+  gap:14px;align-items:start}
+body[data-layout="mica"] .task{
+  border-radius:22px;padding:18px 18px 16px;
+  transition:transform .22s cubic-bezier(.2,.8,.2,1),box-shadow .22s,border-color .22s;
+  box-shadow:var(--g-shadow), inset 0 1px 0 rgba(255,255,255,.10);
+  background-image:linear-gradient(150deg,rgba(255,255,255,.09),rgba(255,255,255,0) 46%);
+}
+body[data-layout="mica"] .task:hover{
+  transform:translateY(-4px);border-color:rgba(255,255,255,.2);
+  box-shadow:0 24px 48px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,255,255,.16)}
+body[data-layout="mica"] .task .t{font-size:15.5px}
+
+/* 地面光斑：两枚柔光反射斑，开灯后整页有漫反射光晕 */
+#groundglow{position:fixed;inset:0;z-index:0;pointer-events:none;opacity:0;
+  transition:opacity .5s ease}
+body[data-glow="on"] #groundglow{opacity:1}
+#groundglow::before,#groundglow::after{content:"";position:absolute;border-radius:50%;filter:blur(46px)}
+#groundglow::before{width:64vw;height:32vw;left:-2vw;bottom:-16vw;
+  background:radial-gradient(circle,rgba(98,172,255,.50),rgba(98,172,255,0) 70%)}
+#groundglow::after{width:54vw;height:28vw;right:-4vw;bottom:-14vw;
+  background:radial-gradient(circle,rgba(158,212,255,.42),rgba(158,212,255,0) 70%)}
+#groundglow .warm{position:absolute;right:-6vw;top:-10vw;width:52vw;height:30vw;border-radius:50%;
+  filter:blur(52px);
+  background:radial-gradient(circle,rgba(126,150,255,.26),rgba(126,150,255,0) 70%)}
+.topbar,.page,.footbar{position:relative}
+.topbar,.page{z-index:1}
+
+/* 分类徽标 */
+.badge.wait{color:#7FD3FF;border-color:rgba(127,211,255,.42);background:rgba(127,211,255,.10)}
+.badge.draft{color:#FFC46B;border-color:rgba(255,196,107,.42);background:rgba(255,196,107,.10)}
+.badge.closed{color:#9AA7B4;border-color:rgba(154,167,180,.35);background:rgba(154,167,180,.08)}
+.badge.late{color:#FF8E8E;border-color:rgba(255,142,142,.45);background:rgba(255,142,142,.10)}
+.badge.nodue{color:#B8C4D2;border-color:rgba(184,196,210,.28);background:rgba(184,196,210,.06)}
+.chip i{font-style:normal;margin-left:6px;opacity:.66;font-size:11.5px}
+.filters{flex-wrap:wrap}
+.chip,.filters .btn,#btn-drafts{white-space:nowrap}
+.badge.fresh{color:#9FB0C0;border-color:rgba(159,176,192,.34);background:rgba(159,176,192,.07)}
+body[data-layout="mica"] .stat{border-radius:20px}
+body[data-layout="mica"] .stats{gap:14px}
+
+/* ---------- 底部栏 ---------- */
+.footbar{position:fixed;left:0;right:0;bottom:0;z-index:15;
+  background:rgba(14,17,22,.94);backdrop-filter:blur(10px);
+  border-top:1px solid var(--stroke);padding:12px 18px}
+.footbar .inner{max-width:960px;margin:0 auto;display:flex;align-items:center;gap:14px}
+.status{font-size:12.5px;color:var(--muted);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.status.err{color:var(--danger)}
+.status.ok{color:var(--ok)}
+
+/* ---------- 弹层 ---------- */
+/* #modals 是所有弹窗的容器：必须做成全屏固定层，否则弹窗会按文档流排到页面下方，
+   小窗口下底部按钮就点不到了（这是之前"界面显示不完整"的根因）。 */
+#modals{position:fixed;inset:0;z-index:60;display:flex;align-items:center;justify-content:center;
+  padding:20px;pointer-events:none}
+#modals:empty{display:none}
+#modals:not(:empty){background:rgba(4,7,10,.72);pointer-events:auto;animation:fadeIn .18s ease}
+.mask{position:fixed;inset:0;background:rgba(4,7,10,.72);z-index:60;
+  display:flex;align-items:center;justify-content:center;padding:20px;animation:fadeIn .18s ease}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+.modal{background:var(--surface);border:1px solid var(--stroke);border-radius:20px;
+  width:100%;max-width:min(1380px,76vw);max-height:92vh;display:flex;flex-direction:column;
+  overflow:hidden;
+  box-shadow:0 24px 60px rgba(0,0,0,.55);animation:pop .2s cubic-bezier(.2,.8,.3,1)}
+@keyframes pop{from{transform:translateY(12px) scale(.985);opacity:.6}to{transform:none;opacity:1}}
+.modal.small{max-width:520px}
+.modal-head{display:flex;align-items:center;gap:12px;padding:16px 20px;border-bottom:1px solid var(--stroke);flex:none}
+.modal-head h3{margin:0;font-size:16px}
+.modal-body{padding:18px 20px;overflow:auto;flex:1 1 auto;min-height:0;-webkit-overflow-scrolling:touch}
+.modal-foot{padding:14px 20px;border-top:1px solid var(--stroke);display:flex;gap:10px;justify-content:flex-end}
+.tabs{display:flex;gap:8px;padding:0 20px 12px;flex:none}
+.tab{background:transparent;border:1px solid var(--stroke);color:var(--muted);
+  border-radius:999px;padding:6px 16px;font-size:12.5px}
+.tab.on{border-color:var(--accent);color:var(--accent);background:var(--accent-dim)}
+iframe.page{width:100%;max-width:none;margin:0;padding:0;height:calc(88vh - 190px);min-height:420px;border:1px solid var(--stroke);border-radius:12px;background:#fff}
+
+@media (max-height:900px){
+  .modal{max-height:94vh}
+  iframe.page{height:calc(92vh - 180px);min-height:360px;max-width:none;margin:0;padding:0}
+  .field textarea{max-height:24vh}
+  .modal-body{padding:14px 16px}
+}
+
+/* ---------- 表单 ---------- */
+.field{margin-bottom:14px}
+.field label{display:block;font-size:12.5px;color:var(--muted);margin-bottom:6px}
+.field input[type=text],.field input[type=password],.field textarea{
+  width:100%;background:#10151C;border:1px solid var(--stroke);border-radius:12px;
+  color:var(--on);padding:10px 12px;font-size:13.5px;outline:none}
+.field input:focus,.field textarea:focus{border-color:var(--accent)}
+.field textarea{resize:vertical;min-height:110px;line-height:1.6}
+.opt{display:flex;align-items:center;gap:9px;padding:7px 0;font-size:13.5px;cursor:pointer}
+.opt input{accent-color:var(--accent);width:16px;height:16px}
+.group{margin-bottom:18px}
+.group-title{font-size:12px;color:var(--muted);letter-spacing:1px;margin-bottom:8px;text-transform:uppercase}
+.note{font-size:12px;color:var(--muted);line-height:1.6;background:#10151C;
+  border:1px solid var(--stroke);border-radius:12px;padding:10px 12px}
+.note.warn{color:var(--warn);border-color:rgba(255,176,32,.3);background:rgba(255,176,32,.06)}
+
+/* ---------- 协议 ---------- */
+.agree-body{white-space:pre-wrap;line-height:1.85;font-size:13.5px;
+  background:var(--surface);border:1px solid var(--stroke);border-radius:18px;
+  padding:22px 24px;max-height:58vh;overflow:auto;user-select:text}
+.agree-foot{display:flex;gap:12px;margin-top:18px;justify-content:flex-end}
+
+/* ---------- 登录 ---------- */
+.login-tip{color:var(--muted);font-size:13px;margin:10px 0 18px;line-height:1.7}
+.steps{counter-reset:s;list-style:none;padding:0;margin:0 0 16px}
+.steps li{counter-increment:s;position:relative;padding:8px 0 8px 34px;font-size:13.5px;line-height:1.7}
+.steps li:before{content:counter(s);position:absolute;left:0;top:9px;width:22px;height:22px;
+  border-radius:50%;background:var(--accent-dim);color:var(--accent);border:1px solid var(--accent);
+  font-size:12px;display:flex;align-items:center;justify-content:center;font-weight:700}
+
+/* ---------- 答案 ---------- */
+.ans{border:1px solid var(--stroke);border-radius:12px;padding:10px 12px;margin-bottom:8px;
+  background:#10151C;display:flex;gap:12px;align-items:flex-start}
+.ans .n{color:var(--accent);font-weight:700;min-width:44px;font-size:12.5px;padding-top:2px}
+.ans .v{flex:1;white-space:pre-wrap;word-break:break-word;font-size:13.5px}
+.ans pre{white-space:pre-wrap;word-break:break-word;margin:0;font-family:inherit;font-size:13.5px}
+.ans .ans-in{width:100%;box-sizing:border-box;background:#0C1116;color:var(--on);
+  border:1px solid var(--stroke);border-radius:8px;padding:7px 10px;font-size:13.5px;
+  font-family:inherit;outline:none;transition:border-color .15s}
+.ans .ans-in:focus{border-color:var(--accent)}
+.ans .ans-in::placeholder{color:#5A6673}
+
+/* ---------- Toast ---------- */
+#toasts{position:fixed;top:18px;left:50%;transform:translateX(-50%);z-index:200;
+  display:flex;flex-direction:column;gap:8px;align-items:center;pointer-events:none}
+.toast{background:#1B2430;border:1px solid var(--stroke);color:var(--on);
+  border-radius:12px;padding:10px 18px;font-size:13px;box-shadow:0 10px 30px rgba(0,0,0,.5);
+  animation:toastIn .2s ease;max-width:80vw}
+@keyframes toastIn{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:none}}
+
+.spin{display:inline-block;width:13px;height:13px;border:2px solid rgba(76,194,255,.3);
+  border-top-color:var(--accent);border-radius:50%;animation:sp .7s linear infinite;
+  vertical-align:-2px;margin-right:6px}
+@keyframes sp{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+
+<!-- 开机动画（约 5 秒） -->
+<div id="splash">
+  <div class="sky"></div>
+  <div class="mist a"></div>
+  <div class="mist b"></div>
+  <div class="fx" style="position:absolute;inset:0;pointer-events:none;z-index:1"></div>
+  <div class="stage">
+    <div class="avatar-wrap">
+      <div class="glow"></div>
+      <div class="ring"></div>
+      <div class="ring r2"></div>
+      <img src="/img/logo.png" alt="logo"
+           onerror="this.style.display='none';this.parentNode.classList.add('noimg')">
+      <div class="sweep"><i></i></div>
+    </div>
+    <div class="boot-name">小肥鱼帮你做作业 · 课业提醒</div>
+    <div class="boot-sub">作业截止 · 一处看全</div>
+    <div class="boot-bar"><i></i></div>
+  </div>
+</div>
+
+<!-- 协议 -->
+<div id="view-agree" class="hide">
+  <div class="page" style="max-width:760px;padding-top:34px">
+    <h2 style="font-size:20px;margin-bottom:6px">用户协议与隐私说明</h2>
+    <p class="muted" style="margin:0 0 16px">小肥鱼帮你做作业 · 仅用于个人学习辅助 · 请阅读并确认后继续使用</p>
+    <div class="agree-body">欢迎使用「小肥鱼帮你做作业」电脑版（学习通作业截止提醒）。
+
+一、这是什么
+本应用是个人学习辅助工具：集中查看你在这台电脑上的作业与截止时间、到点提醒；打开某条作业时可以查看作业页面，并在你主动点击后由内置助手识别页面上的题目、让 AI 给出答案与解析供你参考。
+「自动把答案填进网页并替你提交」这类操作本版不提供——提交作业的按钮始终由你自己点。
+
+二、账号与登录
+登录动作在学习通官方网页中完成，应用不经手、不保存你的账号和密码。
+你只需要把浏览器里已登录状态的 Cookie 粘贴进来；Cookie 只保存在这台电脑的 data.json 文件里，不会上传到任何服务器。
+
+三、数据存储
+课程、作业记录、Cookie 全部保存在程序目录下的 data.json 中，删除该文件或点「清除登录与本地数据」即可全部清除。应用本身没有服务器，不收集个人信息，不含任何统计埋点或广告。
+
+四、AI 说明
+「AI 解题」依赖你配置或选择的第三方大模型接口：
+· 选择自备接口时，题目文本会发送到你填写的服务商；
+· 选择免费公共通道时，题目文本会发送到该公共接口；
+· 答案与解析由模型自动生成，可能出错，请自行核对。
+
+五、使用规范
+请遵守所在学校的规定与学习通的服务条款，仅将本工具用于查看自己的作业安排与自学。
+禁止用于代考、替学等违规用途，因使用本工具产生的一切后果由使用者自行承担。
+
+六、权限说明
+本程序只在 127.0.0.1 本地端口提供服务，不监听外部网络；通知通过 Windows 系统通知弹出。
+
+七、协议生效
+点击「同意并继续」即表示你已阅读、理解并同意以上全部内容。</div>
+    <div class="agree-foot">
+      <button class="btn ghost" id="btn-disagree">不同意并退出</button>
+      <button class="btn primary" id="btn-agree">同意并继续</button>
+    </div>
+  </div>
+</div>
+
+<!-- 登录 -->
+<div id="view-login" class="hide">
+  <div class="page" style="max-width:620px;padding-top:40px">
+    <h2 style="font-size:20px">登录学习通</h2>
+    <div class="login-tip">不用复制 Cookie，也不用按 F12。<br>
+      点下面按钮会弹出一个登录窗口，你在里面正常登录，回来点第二个按钮就行。
+      登录状态只保存在这台电脑上。</div>
+    <ol class="steps">
+      <li>点「① 打开登录窗口」，在弹出的浏览器窗口里登录学习通</li>
+      <li>登录成功后回到这个页面，点「② 我登录好了」</li>
+      <li>程序自动读取登录状态，并同步你的课程和作业</li>
+    </ol>
+    <button class="btn primary" id="btn-open-login" style="width:100%;padding:14px">① 打开登录窗口去登录</button>
+    <button class="btn" id="btn-login-done" style="width:100%;padding:14px;margin-top:10px">② 我登录好了，开始同步</button>
+    <div class="row" style="justify-content:center;margin-top:12px">
+      <button class="btn small" id="btn-login-later">稍后再说</button>
+    </div>
+    <details style="margin-top:26px">
+      <summary class="muted" style="cursor:pointer;font-size:13px">高级：手动粘贴 Cookie（一般用不到）</summary>
+      <div class="field" style="margin-top:12px">
+        <label>Cookie</label>
+        <textarea id="cookie-input" placeholder="_uid=xxxx; _d=xxxx; uf=xxxx; fid=xxxx; ..."></textarea>
+      </div>
+      <button class="btn small" id="btn-cookie-save">保存 Cookie</button>
+    </details>
+  </div>
+</div>
+
+<!-- 主界面 -->
+<div id="view-main" class="hide">
+  <div class="topbar">
+    <h1>课业提醒</h1>
+    <div class="spacer"></div>
+    <button class="btn small" id="btn-settings">设置</button>
+  </div>
+  <div class="page">
+    <div class="stats">
+      <div class="stat done"><b id="st-done">0</b><span>已交</span></div>
+      <div class="stat open"><b id="st-open">0</b><span>未交</span></div>
+      <div class="stat today"><b id="st-today">0</b><span>今天</span></div>
+    </div>
+    <div class="chips">
+      <button class="chip on" data-f="all">全部<i id="c-all">0</i></button>
+      <button class="chip" data-f="today">今天<i id="c-today">0</i></button>
+      <button class="chip" data-f="fresh">未交·未动笔<i id="c-fresh">0</i></button>
+      <button class="chip" data-f="draft">未交·已暂存<i id="c-draft">0</i></button>
+      <button class="chip" data-f="late">未交·已逾期<i id="c-late">0</i></button>
+      <button class="chip" data-f="wait">已交·待批阅<i id="c-wait">0</i></button>
+      <button class="chip" data-f="closed">已交·已截止<i id="c-closed">0</i></button>
+      <button class="chip" data-f="nodue_open">无截止·未完成<i id="c-nodue_open">0</i></button>
+      <button class="chip" data-f="nodue_done">无截止·已完成<i id="c-nodue_done">0</i></button>
+      <div class="grow"></div>
+      <button class="btn small ghost" id="btn-drafts" title="逐个打开未交作业，看有没有暂存的草稿">检查暂存</button>
+    </div>
+    <div id="list" class="list"></div>
+    <div id="empty" class="empty hide">
+      <div class="big">✓</div>
+      <p id="empty-title">暂无未交任务</p>
+      <p class="muted" id="empty-hint">点「立即同步」检查最新作业</p>
+    </div>
+  </div>
+  <div class="footbar">
+    <div class="inner">
+      <div class="status" id="status">尚未同步</div>
+      <button class="btn primary" id="btn-sync">立即同步</button>
+    </div>
+  </div>
+</div>
+
+<div id="groundglow"><i class="warm"></i></div>
+<div id="toasts"></div>
+
+<script>
+"use strict";
+var S = {settings:{}, logged:false, courses:[], tasks:[], lastSync:0, lastError:""};
+var FILTER = "all";
+var detailTask = null;
+
+function $(id){ return document.getElementById(id); }
+function el(tag, cls, html){
+  var e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (html !== undefined) e.innerHTML = html;
+  return e;
+}
+function toast(msg, ms){
+  var t = el("div", "toast", msg);
+  $("toasts").appendChild(t);
+  setTimeout(function(){ t.style.opacity = "0"; t.style.transition = "opacity .25s";
+    setTimeout(function(){ t.remove(); }, 260); }, ms || 2600);
+}
+function api(path, body, timeoutMs){
+  var opt = {
+    method: body === undefined ? "GET" : "POST",
+    headers: {"Content-Type":"application/json"},
+    body: body === undefined ? undefined : JSON.stringify(body)
+  };
+  if (!timeoutMs) return fetch(path, opt).then(function(r){ return r.json(); });
+  return new Promise(function(resolve, reject){
+    var ctl = (typeof AbortController !== "undefined") ? new AbortController() : null;
+    if (ctl) opt.signal = ctl.signal;
+    var timer = setTimeout(function(){
+      try { if (ctl) ctl.abort(); } catch(e){}
+      reject(new Error("超时（" + Math.round(timeoutMs / 1000) + " 秒）"));
+    }, timeoutMs);
+    fetch(path, opt).then(function(r){ return r.json(); }).then(function(v){
+      clearTimeout(timer); resolve(v);
+    }).catch(function(e){
+      clearTimeout(timer); reject(e);
+    });
+  });
+}
+function pad(n){ return n < 10 ? "0" + n : "" + n; }
+function fmtTime(ms){
+  var d = new Date(ms), n = new Date();
+  var hm = pad(d.getHours()) + ":" + pad(d.getMinutes());
+  if (d.toDateString() === n.toDateString()) return "今天 " + hm;
+  var t = new Date(n.getTime() + 86400000);
+  if (d.toDateString() === t.toDateString()) return "明天 " + hm;
+  return pad(d.getMonth()+1) + "-" + pad(d.getDate()) + " " + hm;
+}
+function remain(endAt){
+  if (!endAt) return {text:"无期限", cls:"muted"};
+  var diff = endAt - Date.now();
+  if (diff <= 0) return {text:"已截止", cls:"overdue"};
+  var m = Math.floor(diff / 60000);
+  if (m < 60) return {text: m + " 分钟后", cls:""};
+  var h = Math.floor(m / 60);
+  if (h < 24) return {text: h + " 小时后", cls:""};
+  return {text: Math.floor(h / 24) + " 天后", cls:""};
+}
+function isToday(ms){ return ms && new Date(ms).toDateString() === new Date().toDateString(); }
+function isOverdue(t){ return !t.done && t.endAt && t.endAt < Date.now(); }
+
+/* ---------------- 渲染 ---------------- */
+/* 四类：未交·未动笔 / 未交·已暂存 / 已交·待批阅 / 已交·已截止（另加 未交·已逾期） */
+function isPastDue(t){ return !!(t.endAt && t.endAt * 1000 < Date.now()); }
+/* 有没有「暂时保存」过：以本机逐个打开作业页看到的内容为准（见 scanDraftFromDoc），
+   本应用自己填过答案的作业也会直接记为已暂存。 */
+function answerIdOf(t){
+  if (t.answerId !== undefined && t.answerId !== null && t.answerId !== "") return String(t.answerId);
+  var m = /[?&]answerId=(\d+)/.exec(t.url || "");
+  return m ? m[1] : "";
+}
+function hasDraft(t){
+  return !!(S.drafts && S.drafts[String(t.workId)] === true);
+}
+/* 在一个已经打开的作业页文档里找「已经写过东西」的痕迹 */
+function scanDraftFromDoc(doc){
+  try{
+    if (!doc) return false;
+    var i, els;
+    els = doc.querySelectorAll('input[id], textarea[id]');
+    for (i = 0; i < els.length; i++){
+      var id = els[i].id || "";
+      if (/^answer\d+$/.test(id) || /^answerEditor\d+/.test(id)){
+        if (String(els[i].value || "").trim()) return true;
+      }
+    }
+    var w = doc.defaultView || {};
+    if (w.UE && typeof w.UE.getEditor === "function"){
+      var tas = doc.querySelectorAll('textarea[id^=answer]');
+      for (i = 0; i < tas.length; i++){
+        try{
+          var ed = w.UE.getEditor(tas[i].id);
+          if (ed && String(ed.getContent() || "").replace(/<[^>]+>|&nbsp;|\s/g, "")) return true;
+        }catch(e){}
+      }
+    }
+    els = doc.querySelectorAll('.stuAnswerContent, .mark_answer .stuAnswerContent');
+    for (i = 0; i < els.length; i++){
+      if (String(els[i].textContent || "").replace(/\s/g, "")) return true;
+    }
+    return false;
+  }catch(e){ return false; }
+}
+function classify(t){
+  /* 没有截止时间的作业单独一类：它既不「逾期」也不参与截止排序 */
+  if (!t.endAt) return t.done ? "nodue_done" : "nodue_open";
+  if (!t.done){
+    if (hasDraft(t)) return "draft";
+    if (isPastDue(t)) return "late";
+    return "fresh";
+  }
+  return isPastDue(t) ? "closed" : "wait";
+}
+var CLS_NAME = {fresh:"未动笔", draft:"已暂存", late:"已逾期",
+                wait:"待批阅", closed:"已截止",
+                nodue_open:"无截止·未完成", nodue_done:"无截止·已完成"};
+
+function render(){
+  var tasks = S.tasks.slice();
+  var done = tasks.filter(function(t){ return t.done; }).length;
+  var open = tasks.filter(function(t){ return !t.done; }).length;
+  var today = tasks.filter(function(t){ return !t.done && isToday(t.endAt); }).length;
+  $("st-done").textContent = done;
+  $("st-open").textContent = open;
+  $("st-today").textContent = today;
+
+  var buckets = {all:tasks.length, today:today, fresh:0, draft:0, late:0, wait:0,
+                 closed:0, nodue_open:0, nodue_done:0};
+  tasks.forEach(function(t){ buckets[classify(t)]++; });
+  ["all","today","fresh","draft","late","wait","closed","nodue_open","nodue_done"].forEach(function(k){
+    var n = $("c-" + k);
+    if (n) n.textContent = buckets[k];
+  });
+
+  var show = tasks.filter(function(t){
+    if (!S.settings.showDone && t.done && FILTER !== "wait" && FILTER !== "closed"
+        && FILTER !== "nodue_open" && FILTER !== "nodue_done") return false;
+    if (FILTER === "today") return !t.done && isToday(t.endAt);
+    if (FILTER === "all") return true;
+    return classify(t) === FILTER;
+  });
+
+  var list = $("list");
+  list.innerHTML = "";
+  if (!show.length){
+    $("empty").classList.remove("hide");
+    var et = "暂无未交任务", eh = "点「立即同步」检查最新作业";
+    if (FILTER === "all" && open === 0 && done > 0){ et = "全部交完了"; eh = "最近自动同步会继续检查"; }
+    else if (FILTER === "draft"){ et = "没有暂存的作业"; eh = "点「检查暂存」会逐个打开未交作业，看有没有存过草稿"; }
+    else if (FILTER === "fresh"){ et = "未动笔的作业都清掉了"; eh = "「检查暂存」可以确认有没有存过草稿"; }
+    else if (FILTER === "wait"){ et = "没有待批阅的作业"; eh = "交了但还没批阅的作业会出现在这里"; }
+    else if (FILTER === "closed"){ et = "没有已截止的已交作业"; eh = "截止时间已过且已提交的作业会出现在这里"; }
+    else if (FILTER === "late"){ et = "没有逾期的未交作业"; eh = "截止时间已过还没交的作业会出现在这里"; }
+    else if (FILTER === "nodue_open"){ et = "没有「无截止·未完成」的作业"; eh = "老师没设截止时间、你也还没交的，都在这里"; }
+    else if (FILTER === "nodue_done"){ et = "没有「无截止·已完成」的作业"; eh = "老师没设截止时间、你已经交了的，都在这里"; }
+    $("empty-title").textContent = et;
+    $("empty-hint").textContent = eh;
+  } else {
+    $("empty").classList.add("hide");
+  }
+  show.forEach(function(t){
+    var r = remain(t.endAt);
+    var d = el("div", "task" + (t.done ? " done" : ""));
+    d.appendChild(el("div", "c", esc(t.courseName || "")));
+    d.appendChild(el("div", "t", esc(t.title || "")));
+    var due = t.endAt ? ("截止 " + fmtTime(t.endAt) + " · " + r.text) : "没有截止时间";
+    d.appendChild(el("div", "m " + (t.done ? "muted" : r.cls), due));
+    var cls = classify(t);
+    d.appendChild(el("div", "badge " + cls, (t.done ? "已交 · " : "") + CLS_NAME[cls]));
+    d.onclick = function(){ openDetail(t); };
+    list.appendChild(d);
+  });
+
+  var st = $("status");
+  if (S.lastError){
+    st.textContent = S.lastError; st.className = "status err";
+  } else if (S.lastSync){
+    st.textContent = "已同步 " + S.courses.length + " 门课程，" + open + " 个未交任务 · 上次同步 " + fmtTime(S.lastSync);
+    st.className = "status ok";
+  } else {
+    st.textContent = "尚未同步"; st.className = "status";
+  }
+}
+function esc(s){
+  return String(s == null ? "" : s).replace(/[&<>"']/g, function(c){
+    return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];
+  });
+}
+
+/* ---------------- 页面切换 ---------------- */
+function show(which){
+  ["view-agree","view-login","view-main"].forEach(function(id){
+    $(id).classList.add("hide");
+  });
+  $(which).classList.remove("hide");
+}
+function route(){
+  if (!S.settings.agreed){ show("view-agree"); return; }
+  if (!S.logged){ show("view-login"); return; }
+  show("view-main");
+  render();
+}
+
+/* ---------------- 同步 ---------------- */
+/* 作业页（iframe）提交后回报状态：提示一下并刷新列表，避免"点了没反应" */
+window.addEventListener("message", function(e){
+  var d = e.data;
+  if (!d || d.src !== "xiaofeiyu") return;
+  if (d.kind === "submitting"){
+    toast("正在提交，稍等…（页面会自动刷新）", 4000);
+  } else if (d.kind === "submitted"){
+    toast("已提交" + (d.text ? "：" + String(d.text).slice(0, 60) : "") + "，正在刷新列表…", 6000);
+    setTimeout(function(){ try { sync(); } catch(err){} }, 1200);
+  } else if (d.kind === "submitfail"){
+    toast("提交请求没成功：" + (d.text || "网络错误") + "。可以点「刷新页面」重开再试。", 8000);
+  }
+});
+
+function sync(){
+  var btn = $("btn-sync");
+  btn.disabled = true;
+  var old = btn.textContent;
+  btn.innerHTML = '<span class="spin"></span>同步中';
+  $("status").className = "status";
+  $("status").textContent = "正在适配课程…";
+  api("/api/sync", {}).then(function(r){
+    if (r.ok){
+      S.lastError = "";
+      S.tasks = r.tasks;
+      toast("已适配 " + r.courses + " 门课程，" + r.open + " 个未交作业");
+      return reload();
+    }
+    if (r.auth){
+      toast("登录已失效，请重新登录");
+      S.settings.agreed = true;
+      localStorage.setItem("forceLogin", "1");
+      S.logged = false;
+      show("view-login");
+      return;
+    }
+    S.lastError = r.error || "同步失败";
+    toast(S.lastError, 4000);
+    render();
+  }).catch(function(e){
+    toast("同步失败：" + e, 3600);
+  }).then(function(){
+    btn.disabled = false;
+    btn.textContent = old;
+  });
+}
+
+/* 外观：排版模式 / 材质预设 / 地面光斑 */
+function applyAppearance(a){
+  if (!a) return;
+  document.body.dataset.layout = a.layout || "mica";
+  document.body.dataset.glass = a.glass || "std";
+  document.body.dataset.glow = (a.glow === false) ? "off" : "on";
+}
+
+function reload(){
+  return api("/api/state").then(function(s){
+    S = s;
+    S.drafts = s.drafts || {};
+    applyAppearance(s.settings);
+    route();
+  });
+}
+
+/* ---------------- 详情 ---------------- */
+function openDetail(t){
+  detailTask = t;
+  /* 打开作业时顺手判断有没有存过草稿（只更新分类，不打扰） */
+  if (!t.done && t.url){
+    api("/api/draft?workId=" + encodeURIComponent(String(t.workId)) +
+        "&url=" + encodeURIComponent(t.url)).then(function(r){
+      if (r && r.ok && r.known){
+        S.drafts = S.drafts || {};
+        var wid = String(t.workId);
+        if (!!S.drafts[wid] !== !!r.hasDraft){
+          S.drafts[wid] = !!r.hasDraft;
+          render();
+        }
+      }
+    }).catch(function(){});
+  }
+  var r = remain(t.endAt);
+  var m = el("div", "modal");
+  m.innerHTML =
+    '<div class="modal-head"><h3>' + esc(t.title || "作业") + '</h3><div class="spacer grow"></div>' +
+    '<button class="btn small ghost" data-act="close">关闭</button></div>' +
+    '<div class="tabs">' +
+      '<button class="tab on" data-tab="page">作业页面</button>' +
+      '<button class="tab" data-tab="ai">AI 解题</button>' +
+    '</div>' +
+    '<div class="modal-body">' +
+      '<div id="tab-page">' +
+        '<p class="muted" style="margin:0 0 10px;font-size:12.5px">' + esc(t.courseName||"") +
+          ' · ' + (t.endAt ? ("截止 " + fmtTime(t.endAt) + " · " + r.text) : "没有截止时间") +
+          (t.status ? (' · ' + esc(t.status)) : '') + '</p>' +
+        '<iframe class="page" id="work-frame" sandbox="allow-same-origin allow-scripts allow-forms allow-modals" src="/api/page?url=' + encodeURIComponent(t.url) + '"></iframe>' +
+        '<div class="row" style="margin-top:12px;gap:10px">' +
+          '<button class="btn small" id="btn-open-ext">在浏览器打开</button>' +
+          '<button class="btn small" id="btn-reload-frame">刷新页面</button>' +
+          '<div class="grow"></div>' +
+          '<button class="btn small" id="btn-grab">读取本页题目</button>' +
+          '<button class="btn small" id="btn-vision">读图转写</button>' +
+          '<button class="btn small" id="btn-doubao">逐题问豆包</button>' +
+          '<button class="btn small" id="btn-copy-q">复制题目</button>' +
+        '</div>' +
+        '<div class="note" style="margin-top:12px">页面由本机代理加载，已带上你的 Cookie。若页面空白或样式错乱，点「在浏览器打开」用系统浏览器看（那里需要单独登录一次）。</div>' +
+      '</div>' +
+      '<div id="tab-ai" class="hide">' +
+        '<div class="note warn" style="margin-bottom:12px">点「填入作业页面」会把答案自动填进作业页面，填完请在页面上自己核对。最后一步「提交」需要你自己点——本程序不会替你提交。</div>' +
+        '<div class="field"><label>题目内容（可自动读取，也可手动粘贴）</label>' +
+          '<textarea id="ai-input" placeholder="点上面的「读取本页题目」，或直接把题目粘贴到这里…"></textarea></div>' +
+        '<div class="row" style="gap:10px">' +
+          '<button class="btn primary" id="btn-solve">生成答案</button>' +
+          '<button class="btn" id="btn-explain">只要解析</button>' +
+          '<div class="grow"></div>' +
+          '<button class="btn small" id="btn-copy-all">复制结果</button>' +
+          '<button class="btn small" id="btn-copy-q2">复制题目</button>' +
+          '<button class="btn small primary" id="btn-fill" disabled>填入作业页面</button>' +
+        '</div>' +
+        '<div id="ai-out" style="margin-top:14px"></div>' +
+        '<div id="doubao-box" class="hide" style="margin-top:14px;padding:12px 14px;border:1px solid #2a3441;border-radius:12px;background:#0F151C">' +
+          '<div class="muted" id="doubao-msg" style="font-size:12.5px;margin-bottom:8px"></div>' +
+          '<div id="doubao-out" style="white-space:pre-wrap;font-size:13.5px;line-height:1.65;max-height:320px;overflow:auto"></div>' +
+          '<div class="row" style="gap:10px;margin-top:10px">' +
+            '<button class="btn small primary" id="btn-doubao-fill">填进这道题</button>' +
+            '<button class="btn small" id="btn-doubao-copy">复制豆包答案</button>' +
+            '<div class="grow"></div>' +
+            '<span class="muted" style="font-size:12px">豆包答完会自动把回答读回来，读不到可用「读图转写」</span>' +
+          '</div>' +
+        '</div>' +
+        '<div style="margin-top:18px;padding-top:16px;border-top:1px solid #222b35">' +
+          '<div class="field"><label>粘贴别处拿到的答案（以这里为准，可整段粘）</label>' +
+            '<textarea id="paste-input" style="height:96px;min-height:96px" placeholder="把别的 AI / 答题软件给的答案整段粘进来，序号随意，例如：&#10;1. B&#10;2、ACD&#10;3. 对&#10;4. 第一空#第二空&#10;5. 简答题正文……"></textarea>' +
+          '</div>' +
+          '<div class="row" style="gap:10px">' +
+            '<button class="btn primary" id="btn-paste-fill" disabled>按我的答案填</button>' +
+            '<button class="btn small" id="btn-paste-clear">清空</button>' +
+            '<div class="grow"></div>' +
+            '<span class="muted" id="paste-status" style="font-size:12.5px"></span>' +
+          '</div>' +
+          '<div class="note" style="margin-top:8px">规则：<b>你粘进来的答案说了算</b>。和已有答案相同的题不动，不同的题覆盖；识别不到的题保持原样。</div>' +
+        '</div>' +
+      '</div>' +
+    '</div>';
+  $("modals").appendChild(m);
+  wireDetail(m, t);
+}
+
+function wireDetail(m, t){
+  m.addEventListener("click", function(e){
+    if (e.target === m){ close(); return; }
+    var b = e.target.closest("[data-act=close]");
+    if (b){ close(); }
+  });
+  function close(){ m.remove(); detailTask = null; }
+  m.querySelectorAll(".tab").forEach(function(tb){
+    tb.onclick = function(){
+      m.querySelectorAll(".tab").forEach(function(x){ x.classList.remove("on"); });
+      tb.classList.add("on");
+      var tab = tb.dataset.tab;
+      m.querySelector("#tab-page").classList.toggle("hide", tab !== "page");
+      m.querySelector("#tab-ai").classList.toggle("hide", tab !== "ai");
+    };
+  });
+  m.querySelector("#btn-open-ext").onclick = function(){
+    window.open(t.url, "_blank");
+  };
+  m.querySelector("#btn-reload-frame").onclick = function(){
+    var f = m.querySelector("#work-frame");
+    f.src = f.src;
+  };
+  m.querySelector("#btn-grab").onclick = function(){
+    var grabbed = grabQuestions(m);
+    if (!grabbed){ toast("这个页面没识别到题目", 3000); return; }
+    m.querySelector('[data-tab="ai"]').click();
+    m.querySelector("#ai-input").value = grabbed;
+    var n = (lastGrab && lastGrab.qs) ? lastGrab.qs.length : (grabbed.split("\n第 ").length - 1);
+    var img = (lastGrab && lastGrab.imgOnly) ? lastGrab.imgOnly : [];
+    toast("已读取 " + n + " 道题" + (img.length ? "（其中第 " + img.join("、") + " 题是图片题）" : ""), 4500);
+  };
+
+  m.querySelector("#btn-vision").onclick = function(){ visionTranscribe(m); };
+  m.querySelector("#btn-doubao").onclick = function(){ askDoubao(m); };
+  m.querySelector("#btn-doubao-copy").onclick = function(){
+    var list = (doubaoSummary && doubaoSummary.length) ? doubaoSummary : [];
+    var txt = "";
+    if (list.length){
+      txt = list.map(function(x){ return x.i + ". " + x.answer; }).join("\n");
+    } else if (doubaoAnswer){
+      txt = doubaoAnswer;
+    }
+    if (!txt){ toast("还没有豆包的回答", 4000); return; }
+    copy(txt);
+    var pIn = m.querySelector("#paste-input");
+    if (pIn && list.length){
+      pIn.value = txt;
+      pIn.dispatchEvent(new Event("input", {bubbles: true}));
+    }
+    toast("已复制 " + (list.length ? list.length + " 条答案" : "回答") + "，也填进了下面的粘贴框", 4000);
+  };
+  m.querySelector("#btn-doubao-fill").onclick = function(){
+    var list = (doubaoSummary && doubaoSummary.length) ? doubaoSummary : (lastAnswers || []);
+    if (!list.length){ toast("还没有豆包的回答", 4000); return; }
+    fillIntoPage(m, list, {keepTab:true, merge:true, label:"豆包的答案"});
+  };
+  m.querySelector("#btn-copy-q").onclick = function(){
+    var grabbed = m.querySelector("#ai-input").value.trim();
+    if (!grabbed) grabbed = grabQuestions(m);
+    if (!grabbed){ toast("这个页面没识别到题目", 3000); return; }
+    m.querySelector("#ai-input").value = grabbed;
+    copy(grabbed);
+  };
+  m.querySelector("#btn-copy-q2").onclick = function(){
+    var grabbed = m.querySelector("#ai-input").value.trim();
+    if (!grabbed){ toast("还没有题目，先点「读取本页题目」", 3000); return; }
+    copy(grabbed);
+  };
+  m.querySelector("#btn-solve").onclick = function(){ solve(m, "answer"); };
+  m.querySelector("#btn-explain").onclick = function(){ solve(m, "explain"); };
+  m.querySelector("#btn-copy-all").onclick = function(){
+    var out2 = m.querySelector("#ai-out");
+    var txt;
+    var rows = Array.prototype.slice.call(out2.querySelectorAll(".ans"));
+    if (rows.some(function(r){ return r.querySelector(".ans-in"); })){
+      /* 填空题按空拆开显示，值在输入框里，innerText 拿不到 */
+      txt = rows.map(function(r){
+        var n = (r.querySelector(".n") || {}).innerText || "";
+        var inp = r.querySelector(".ans-in");
+        var v = inp ? inp.value : ((r.querySelector(".v") || {}).innerText || "");
+        return n.replace(/\s+/g, " ").trim() + "：" + String(v).trim();
+      }).join("\n");
+    } else {
+      txt = out2.innerText;
+    }
+    if (!txt){ toast("还没有结果"); return; }
+    copy(txt);
+  };
+  m.querySelector("#btn-fill").onclick = function(){
+    fillIntoPage(m);
+    /* 填过就说明这份作业有草稿了，列表里能立刻看到分类变化 */
+    if (detailTask && !detailTask.done){
+      S.drafts = S.drafts || {};
+      S.drafts[String(detailTask.workId)] = true;
+      api("/api/setdrafts", {drafts: S.drafts}).catch(function(){});
+    }
+  };
+  var pIn = m.querySelector("#paste-input");
+  var pBtn = m.querySelector("#btn-paste-fill");
+  pIn.addEventListener("input", function(){
+    var n = parsePasted(pIn.value).length;
+    pBtn.disabled = n === 0;
+    m.querySelector("#paste-status").textContent = n ? ("识别到 " + n + " 条答案") : "";
+  });
+  m.querySelector("#btn-paste-clear").onclick = function(){
+    pIn.value = "";
+    pBtn.disabled = true;
+    m.querySelector("#paste-status").textContent = "";
+  };
+  pBtn.onclick = function(){ fillFromPaste(m); };
+}
+
+var lastAnswers = [];
+
+function frameDoc(m){
+  var f = m.querySelector("#work-frame");
+  try { return f.contentDocument; } catch(e){ return null; }
+}
+
+function fireEv(el, type){
+  var ev;
+  try { ev = new Event(type, {bubbles: true}); }
+  catch(e){ ev = document.createEvent("HTMLEvents"); ev.initEvent(type, true, false); }
+  el.dispatchEvent(ev);
+}
+
+function qidOf(n){
+  var d = (n.getAttribute("data") || "").trim();
+  if (/^\d+$/.test(d)) return d;
+  var mm = (n.id || "").match(/(\d{3,})/);
+  return mm ? mm[1] : (d || "");
+}
+
+var ANSWER_TYPES = {0: "单选题", 1: "多选题", 2: "填空题", 3: "判断题", 4: "简答题",
+                    5: "名词解释", 6: "论述题", 13: "排序题", 14: "完型填空",
+                    15: "阅读理解", 19: "阅读理解", 21: "评价题"};
+
+function typeOf(doc, n){
+  var t = (n.getAttribute("typeName") || "").trim();
+  if (t) return t;
+  var hid = n.querySelector("input[id^=answertype]");
+  if (hid){
+    var v = (hid.value || "").trim();
+    if (ANSWER_TYPES[v]) return ANSWER_TYPES[v];
+  }
+  var txt = (n.innerText || "").slice(0, 200);
+  var mm = txt.match(/[（(]\s*(单选|多选|填空|判断|简答|名词解释|论述|排序|完型|阅读)[^）)]*[）)]/);
+  return mm ? mm[0].replace(/[（()）]/g, "") : "";
+}
+
+function hideInput(el){
+  var box = el.closest ? el.closest(".answerBg") : null;
+  return box || el;
+}
+
+function activateBox(box){
+  /* 学习通的 .answerBg 上挂着 onclick="addChoice(this)"，点它最可靠 */
+  try { box.click(); } catch(e){}
+  var sp = box.querySelector("span[data]");
+  if (sp && !/check_answer/.test(sp.className || "")){
+    try { sp.classList.add("check_answer"); } catch(e){}
+  }
+}
+
+function fillChoice(node, ans){
+  var raw = String(ans == null ? "" : ans).trim();
+  if (!raw) return 0;
+  var boxes = Array.prototype.slice.call(node.querySelectorAll(".answerBg"));
+  var judge = JUDGE_MAP[raw.toLowerCase()];
+  if (!judge && /^[对错]$/.test(raw)) judge = raw;
+
+  /* 判断题：data="true" / "false" */
+  if (judge){
+    var want = judge === "对" ? "true" : "false";
+    var i, sp;
+    for (i = 0; i < boxes.length; i++){
+      sp = boxes[i].querySelector("span[data]");
+      var dv = sp ? String(sp.getAttribute("data") || "").trim().toLowerCase() : "";
+      if (dv === want || dv === (judge === "对" ? "a" : "b")){
+        activateBox(boxes[i]);
+        return 1;
+      }
+    }
+    /* 有些判断题 data 是字母，靠选项文字判断 */
+    for (i = 0; i < boxes.length; i++){
+      var txt = cleanText(boxes[i].innerText || "");
+      if (judge === "对" && /对|正确|是/.test(txt)){ activateBox(boxes[i]); return 1; }
+      if (judge === "错" && /错|否/.test(txt)){ activateBox(boxes[i]); return 1; }
+    }
+    return 0;
+  }
+
+  var letters = (raw.toUpperCase().match(/[A-P]/g) || []);
+  if (!letters.length) return 0;
+  var inputs = Array.prototype.slice.call(node.querySelectorAll('input[type=radio], input[type=checkbox]'));
+  var done = 0;
+  letters.forEach(function(L){
+    var hit = null, j;
+    for (j = 0; j < boxes.length; j++){
+      var s = boxes[j].querySelector("span[data]");
+      var letter = s ? cleanText(s.innerText).toUpperCase() : "";
+      var d2 = s ? String(s.getAttribute("data") || "").trim().toUpperCase() : "";
+      if (letter === L || d2 === L){ hit = boxes[j]; break; }
+    }
+    if (!hit){
+      for (j = 0; j < inputs.length; j++){
+        if (String(inputs[j].value || "").trim().toUpperCase() === L){ hit = inputs[j]; break; }
+      }
+    }
+    if (!hit) return;
+    if (hit.tagName === "INPUT"){
+      hit.checked = true;
+      fireEv(hit, "change");
+      hit.click && hit.click();
+      hit.checked = true;
+    } else {
+      activateBox(hit);
+    }
+    done++;
+  });
+  return done;
+}
+
+function escHtml(s){
+  return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+/* 填空题 / 程序填空题：每个空是一个 textarea#answerEditor{qid}{n}，被 UEditor 接管 */
+function fillBlank(doc, node, qid, ans){
+  var w = doc.defaultView || window;
+  var fields = Array.prototype.slice.call(
+    node.querySelectorAll('textarea[id^=answerEditor], input[id^=answerEditor]')
+  );
+  if (!fields.length){
+    fields = Array.prototype.slice.call(node.querySelectorAll("textarea, input[type=text]"))
+      .filter(function(el){ return el.type !== "hidden"; });
+  }
+  // 以页面上真实的作答框个数为准来拆段
+  var parts = splitAnswer(ans, fields.length || 1);
+  if (parts.length === 1 && /\n/.test(parts[0]) && fields.length > 1){
+    var byLine = parts[0].split(/\n+/).map(function(x){ return x.trim(); }).filter(Boolean);
+    if (byLine.length === fields.length) parts = byLine;
+  }
+  var filled = [], missing = [];
+  fields.forEach(function(el, i){
+    var p = parts[i] == null ? "" : String(parts[i]).trim();
+    if (!p){ missing.push(i + 1); return; }
+    var id = el.id || el.name || "";
+    var ok = false;
+    try {
+      if (w.UE && typeof w.UE.getEditor === "function" && /^answerEditor/.test(id)){
+        var ed = w.UE.getEditor(id);
+        if (ed && typeof ed.setContent === "function"){
+          ed.setContent(escHtml(p));
+          if (typeof ed.sync === "function") ed.sync();
+          ok = true;
+        }
+      }
+    } catch(e){ ok = false; }
+    if (!ok){
+      el.value = p;
+      fireEv(el, "input"); fireEv(el, "change");
+      ok = true;
+    }
+    // 读回校验，确认真的进去了
+    var got = "";
+    try {
+      if (w.UE && /^answerEditor/.test(id)){
+        var ed2 = w.UE.getEditor(id);
+        if (ed2 && typeof ed2.getContent === "function") got = ed2.getContent();
+      }
+    } catch(e){ got = ""; }
+    if (!got){
+      try { got = el.value || ""; } catch(e){ got = ""; }
+    }
+    got = decodeEnt(String(got).replace(/<[^>]+>/g, "")).trim();
+    if (ok && (got === "" || got.indexOf(p.slice(0, 4)) >= 0 || p.indexOf(got.slice(0, 4)) >= 0)) filled.push(i + 1);
+    else missing.push(i + 1);
+  });
+  return {filled: filled, missing: missing, total: fields.length};
+}
+
+function fillEssay(doc, node, qid, ans){
+  var w = doc.defaultView || window;
+  try {
+    if (w.UE && typeof w.UE.getEditor === "function" && qid){
+      var ed = w.UE.getEditor("answer" + qid);
+      if (ed && typeof ed.setContent === "function"){
+        ed.setContent(ans.replace(/\n/g, "<br>"));
+        if (typeof ed.sync === "function") ed.sync();
+        return true;
+      }
+    }
+  } catch(e){}
+  var ta = node.querySelector("textarea[id^=answer]") || node.querySelector("textarea");
+  if (ta){
+    ta.value = ans;
+    fireEv(ta, "input"); fireEv(ta, "change");
+    return true;
+  }
+  var ce = node.querySelector('[contenteditable=true]');
+  if (ce){
+    ce.innerText = ans;
+    fireEv(ce, "input");
+    return true;
+  }
+  return false;
+}
+
+/* ---------- 外来答案：解析 / 比对 / 覆盖 ---------- */
+var JUDGE_MAP = {"对": "对", "正确": "对", "是": "对", "√": "对", "true": "对", "t": "对", "1": "对",
+                 "错": "错", "错误": "错", "否": "错", "×": "错", "x": "错", "false": "错", "f": "错", "0": "错"};
+
+function normAns(s){
+  s = String(s == null ? "" : s).replace(/\r/g, "");
+  s = s.replace(/[\uFF01-\uFF5E]/g, function(ch){
+    return String.fromCharCode(ch.charCodeAt(0) - 0xFEE0);
+  }).replace(/\u3000/g, " ").trim();
+  var j = JUDGE_MAP[s.toLowerCase()];
+  if (j) return j;
+  if (/^[A-Pa-p][\s,，、;；/／A-Pa-p]*$/.test(s)){
+    return (s.toUpperCase().match(/[A-P]/g) || []).sort().join("");
+  }
+  return s.replace(/\s+/g, "").replace(/[。．.,，;；:：、!！?？"'“”‘’`~\-—_]/g, "").toLowerCase();
+}
+
+function looksShortAns(t){
+  t = String(t || "").trim();
+  if (!t) return false;
+  if (/^[A-Pa-p][\s,，、;；/／A-Pa-p]*$/.test(t)) return true;
+  return JUDGE_MAP[t.toLowerCase()] !== undefined;
+}
+
+function splitInline(s){
+  var re = /(?:^|[\s，,；;])(?:第\s*)?(\d{1,3})\s*[.、)．:：]\s*/g, mm, idxs = [];
+  while ((mm = re.exec(s))){
+    idxs.push({i: parseInt(mm[1], 10), at: mm.index, end: re.lastIndex});
+  }
+  if (idxs.length < 2) return null;
+  var out = [];
+  idxs.forEach(function(it, k){
+    var stop = k + 1 < idxs.length ? idxs[k + 1].at : s.length;
+    var body = s.slice(it.end, stop).trim();
+    if (/答案\s*[:：]/.test(body)) body = body.replace(/^.*?答案\s*[:：]\s*/, "").trim();
+    if (body) out.push({i: it.i, answer: body});
+  });
+  return out.length >= 2 ? out : null;
+}
+
+function parsePasted(text){
+  var s = String(text || "").replace(/\r\n?/g, "\n");
+  if (!s.trim()) return [];
+  /* 1) JSON 数组（自家生成的结果也能直接粘回来） */
+  var a = s.indexOf("["), b = s.lastIndexOf("]");
+  if (a >= 0 && b > a){
+    try {
+      var arr = JSON.parse(s.slice(a, b + 1));
+      if (Array.isArray(arr) && arr.length){
+        var out = [];
+        arr.forEach(function(it, k){
+          if (it && typeof it === "object"){
+            out.push({i: parseInt(it.i || it.index || it.no || (k + 1), 10),
+                      answer: String(it.answer != null ? it.answer : (it.a != null ? it.a : ""))});
+          } else if (it != null){
+            out.push({i: k + 1, answer: String(it)});
+          }
+        });
+        if (out.some(function(x){ return x.answer.trim(); })) return cleanList(out);
+      }
+    } catch(e){}
+  }
+  /* 2) 一行里挤了多题（"1.B 2.ACD 3.对"）先按序号切开 */
+  var inl = splitInline(s);
+  var nLines = s.split("\n").filter(function(x){ return x.trim(); }).length;
+  if (inl && inl.length >= Math.max(2, nLines)) return cleanList(inl);
+  /* 3) 带序号的行 */
+  var reIdx = /^(?:第\s*)?([0-9]{1,3})\s*(?:题)?\s*(?:[（(][^）)]{0,12}[）)])?\s*[.、)．:：]?\s*(.*)$/;
+  var reQ = /^[Qq]\.?\s*([0-9]{1,3})\s*[.、)．:：]?\s*(.*)$/;
+  var res = [], cur = null;
+  s.split("\n").forEach(function(raw){
+    var line = raw.trim();
+    if (!line) return;
+    var m = line.match(reQ) || line.match(reIdx);
+    var idx = m ? parseInt(m[1], 10) : 0;
+    if (m && idx > 0 && idx <= 500){
+      var body = (m[2] || "").trim();
+      if (/答案\s*[:：]/.test(body)) body = body.replace(/^.*?答案\s*[:：]\s*/, "").trim();
+      cur = {i: idx, answer: body};
+      res.push(cur);
+      return;
+    }
+    var needNew = !cur || (looksShortAns(line) &&
+      (cur.answer === "" || looksShortAns(cur.answer) || cur.answer.replace(/\s/g, "").length > 8));
+    if (!needNew){
+      cur.answer = cur.answer ? (cur.answer + "\n" + line) : line;
+    } else {
+      cur = {i: res.length + 1, answer: line};
+      res.push(cur);
+    }
+  });
+  return cleanList(res);
+}
+
+function cleanList(list){
+  var seen = {}, out = [];
+  list.forEach(function(x){
+    var i = parseInt(x.i, 10);
+    if (!i || seen[i]) return;
+    var v = String(x.answer == null ? "" : x.answer).trim();
+    if (!v) return;
+    seen[i] = 1;
+    out.push({i: i, answer: v});
+  });
+  out.sort(function(p, q){ return p.i - q.i; });
+  return out;
+}
+
+function fillFromPaste(m){
+  var doc = frameDoc(m);
+  if (!doc || !doc.body){
+    toast("作业页面还没加载好：先切到「作业页面」等它打开，再回来点这个按钮", 4500);
+    return;
+  }
+  var list = parsePasted(m.querySelector("#paste-input").value);
+  if (!list.length){ toast("没从粘贴的内容里认出答案，检查一下格式", 3500); return; }
+  var base = {};
+  (lastAnswers || []).forEach(function(a){ base[parseInt(a.i, 10)] = String(a.answer == null ? "" : a.answer); });
+  var changed = [], same = 0;
+  list.forEach(function(a){
+    var old = base[a.i];
+    if (old !== undefined && normAns(old) === normAns(a.answer)) same++;
+    else changed.push(a);
+  });
+  var st = m.querySelector("#paste-status");
+  if (!changed.length){
+    if (st) st.textContent = "识别 " + list.length + " 条；全部与已有答案相同，不用改";
+    toast("你贴的答案和已有答案一致，页面不动", 4000);
+    return;
+  }
+  if (st) st.textContent = "识别 " + list.length + " 条；覆盖 " + changed.length + " 条，相同跳过 " + same + " 条";
+  fillIntoPage(m, changed, {keepTab: true, label: "按你的答案", merge: true});
+}
+
+
+function fillIntoPage(m, answers, opts){
+  opts = opts || {};
+  var doc = frameDoc(m);
+  if (!doc || !doc.body){
+    toast("作业页面还没加载好：先切到「作业页面」等它打开，再回来点这个按钮", 4500);
+    return;
+  }
+  var list = (answers && answers.length) ? answers : (lastAnswers || []);
+  if (!list.length){ toast("先生成答案，或先粘贴你的答案"); return; }
+  var nodes = Array.prototype.slice.call(
+    doc.querySelectorAll("div.questionLi, div[id^=question], div.singleQuesId")
+  );
+  if (!nodes.length){ toast("这个页面上没找到题目", 3000); return; }
+  var filled = 0, missed = [], filledMap = {}, imgSkip = [], partial = [];
+  list.forEach(function(a){
+    var idx = parseInt(a.i, 10);
+    var node = nodes[idx - 1];
+    var ans = String(a.answer == null ? "" : a.answer).trim();
+    if (!node || !ans){ missed.push(a.i); return; }
+    var stemTxt = "";
+    try { stemTxt = nodeStem(node); } catch(e){}
+    var type = typeOf(doc, node);
+    var qid = qidOf(node);
+    var ok = false, bi = null;
+    try {
+      if (/多选|不定项/.test(type)) ok = fillChoice(node, ans) > 0;
+      else if (/单选|判断|评价/.test(type)) ok = fillChoice(node, ans) > 0;
+      else if (/填空/.test(type)) { bi = fillBlank(doc, node, qid, ans); ok = bi.filled.length > 0; }
+      else if (/简答|论述|名词|阅读|完型|排序|其它/.test(type)) ok = fillEssay(doc, node, qid, ans);
+      else {
+        ok = fillEssay(doc, node, qid, ans);
+        if (!ok){ bi = fillBlank(doc, node, qid, ans); ok = bi.filled.length > 0; }
+      }
+    } catch(e){ ok = false; }
+    if (ok && bi && bi.missing && bi.missing.length){
+      partial.push("第 " + a.i + " 题的第 " + bi.missing.join("、") + " 空");
+    }
+    if (ok){
+      filled++;
+      filledMap[parseInt(a.i, 10)] = a;
+      try { node.style.outline = "2px solid #4CC2FF"; node.style.outlineOffset = "4px"; } catch(e){}
+    } else {
+      if (!stemTxt && node.querySelector("img")) imgSkip.push(a.i);
+      else missed.push(a.i);
+    }
+  });
+  var msg = (opts.label ? opts.label + "：" : "") + "已填入 " + filled + " 题" +
+            (imgSkip.length ? ("；第 " + imgSkip.join("、") + " 题是纯图片题，没点到选项（可能不是选择题，需手动填）") : "") +
+            (partial.length ? ("；" + partial.join("、") + " 还空着（答案给的空不够），可点「按我的答案填」补") : "") +
+            (missed.length ? ("；第 " + missed.join("、") + " 题没填上（题型不支持或页面结构不同）") : "");
+  toast(msg, 7000);
+  if (opts.merge){
+    var map = {};
+    (lastAnswers || []).forEach(function(x){ map[parseInt(x.i, 10)] = x; });
+    Object.keys(filledMap).forEach(function(k){ map[k] = filledMap[k]; });
+    lastAnswers = Object.keys(map).map(function(k){ return map[k]; })
+      .sort(function(p, q){ return parseInt(p.i, 10) - parseInt(q.i, 10); });
+    var fb = m.querySelector("#btn-fill");
+    if (fb && lastAnswers.length) fb.disabled = false;
+  }
+  if (!opts.keepTab) m.querySelector('[data-tab="page"]').click();
+}
+
+var lastGrab = null;
+var doubaoAnswer = "", doubaoIndex = 0, doubaoSummary = null;
+var doubaoIndex = 0;
+
+/* 把「带图片的题」的图片发给本机豆包（桌面自动化），再把它答的读回来 */
+function doubaoItemText(q, no){
+  var parts = [];
+  parts.push("第" + no + "题（" + (q.type || "题目") + "）");
+  parts.push(q.stem || "（题干在图片里）");
+  if (q.opts && q.opts.length) parts.push("选项：\n" + q.opts.join("\n"));
+  if (q.blanks > 1) parts.push("（本题 " + q.blanks + " 个空，按顺序作答）");
+  parts.push("请直接作答，最后单独一行写：答案：<你的答案>");
+  return parts.join("\n").slice(0, 1200);
+}
+
+/* 带图片的题：直接在页面上把这一题（题干+选项）整块截成一张图发给豆包 */
+function doubaoShotText(q, no, total){
+  var parts = [];
+  parts.push("这是一张题目截图（第 " + no + " 题，共 " + total + " 题，" + (q.type || "题目") + "），");
+  parts.push("题干和全部选项都在图里，题干和选项可能是公式或图片。");
+  if (q.blanks > 1) parts.push("本题有 " + q.blanks + " 个空，多个空用 ||| 分隔。");
+  parts.push("请先完整读懂图里的题目，再直接给出这道题的答案；");
+  parts.push("只输出作答结果，最后单独一行写：答案：<你的答案>");
+  return parts.join("");
+}
+
+function askDoubao(m){
+  var doc = frameDoc(m);
+  if (!lastGrab || !lastGrab.qs || !lastGrab.qs.length) grabQuestions(m);
+  var qs = (lastGrab && lastGrab.qs) || [];
+  if (!qs.length){
+    toast("还没读到题目，先点「读取本页题目」", 4000);
+    return;
+  }
+  var items = [];
+  var shotCount = 0;
+  var pageUrl = ((detailTask && detailTask.url) || "").trim();
+  for (var i = 0; i < qs.length; i++){
+    var q = qs[i];
+    var hasImg = !!(q.imgs && q.imgs.length);
+    if (hasImg && pageUrl){
+      shotCount++;
+      items.push({i: i + 1, url: pageUrl, idx: i, text: doubaoShotText(q, i + 1, qs.length)});
+    } else {
+      items.push({i: i + 1, images: (q.imgs || []).slice(0, 3), text: doubaoItemText(q, i + 1)});
+    }
+  }
+  var btn = m.querySelector("#btn-doubao");
+  var old = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = "逐题问豆包 0/" + items.length;
+  var total = items.length;
+  toast("逐题发给豆包：共 " + total + " 题（其中 " + shotCount + " 题整题截图发送），约 " +
+        Math.ceil(total * 22 / 60) + " 分钟。期间请不要动鼠标键盘，也别点豆包窗口", 10000);
+  var ticker = setInterval(function(){
+    var cur = parseInt((btn.textContent.match(/(\d+)\/(\d+)/) || [0, 0])[1], 10) || 0;
+    if (cur < total) btn.textContent = "逐题问豆包 " + (cur + 1) + "/" + total;
+  }, 22000);
+
+  api("/api/doubao", {items: items, ref: doc ? doc.baseURI : "", wait: 14, summary: true},
+      Math.max(180000, total * 60000)).then(function(r){
+    clearInterval(ticker);
+    btn.disabled = false;
+    btn.textContent = old;
+    if (!r || !r.ok){
+      toast((r && r.error) || "豆包没有返回内容", 8000);
+      return;
+    }
+    var summary = String(r.summary || "").trim();
+    var ans = [], seenI = {};
+    (r.answers || []).forEach(function(x){
+      var i = parseInt(x && x.i, 10);
+      var v = String((x && x.answer) || "").trim();
+      if (i > 0 && v && !seenI[i]){ seenI[i] = 1; ans.push({i: i, answer: v}); }
+    });
+    if (!ans.length && summary){
+      var parsed = parsePasted(summary);
+      for (var k = 0; k < parsed.length; k++){
+        if (parsed[k] && parsed[k].answer) ans.push({i: parsed[k].i, answer: parsed[k].answer});
+      }
+    }
+    ans.sort(function(p, q){ return p.i - q.i; });
+    var box = m.querySelector("#doubao-box");
+    if (box) box.classList.remove("hide");
+    m.querySelector("#doubao-msg").textContent =
+      "豆包逐题回答完了（" + total + " 题），下面是从它的汇总里提取的答案，可改后再填";
+    var lines = [];
+    for (var j = 0; j < ans.length; j++){
+      var qi = ans[j].i - 1;
+      var t = qs[qi] ? (qs[qi].type || "") : "";
+      lines.push("第" + ans[j].i + "题" + (t ? "（" + t + "）" : "") + "：" + ans[j].answer);
+    }
+    m.querySelector("#doubao-out").textContent = lines.length ? lines.join("\n")
+      : ("汇总：" + (summary || "（空）"));
+    m.querySelector('[data-tab="ai"]').click();
+    doubaoSummary = ans;
+    lastAnswers = ans.slice();
+    if (ans.length){
+      var pIn2 = m.querySelector("#paste-input");
+      if (pIn2){
+        pIn2.value = ans.map(function(x){ return x.i + ". " + x.answer; }).join("\n");
+        pIn2.dispatchEvent(new Event("input", {bubbles: true}));
+      }
+    }
+    if (ans.length){
+      var fb = m.querySelector("#btn-doubao-fill");
+      if (fb) fb.classList.remove("hide");
+      var cc = m.querySelector("#btn-doubao-copy");
+      if (cc) cc.classList.remove("hide");
+      toast("豆包汇总好了：识别到 " + ans.length + " 题答案，点「填入作业页面」即可", 7000);
+    } else {
+      toast("豆包回答了，但没提取到规整的答案，先看一眼它的原话", 7000);
+    }
+  }).catch(function(e){
+    clearInterval(ticker);
+    btn.disabled = false;
+    btn.textContent = old;
+    toast("调用豆包失败：" + e, 8000);
+  });
+}
+
+/* UEditor 读写回来的内容带 HTML 实体（&#39; &quot; &nbsp;），比较前先还原 */
+function decodeEnt(s){
+  return String(s == null ? "" : s)
+    .replace(/&nbsp;/g, " ").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&apos;/g, "'")
+    .replace(/&amp;/g, "&");
+}
+
+function cleanText(s){
+  return String(s || "").replace(/[\u200b-\u200f\u202a-\u202e\u2066-\u2069\ufeff]/g, "")
+    .replace(/\u00a0/g, " ").replace(/\r/g, "")
+    .replace(/[ \t]+/g, " ").replace(/\s*\n\s*/g, "\n").trim();
+}
+
+function nodeType(n){
+  var t = (n.getAttribute("typeName") || "").trim();
+  if (t) return t;
+  var hid = n.querySelector("input[id^=answertype]");
+  if (hid){
+    var v = (hid.value || "").trim();
+    if (ANSWER_TYPES[v]) return ANSWER_TYPES[v];
+  }
+  var el = n.querySelector(".questionType, .QType, .type");
+  return el ? cleanText(el.innerText).slice(0, 12) : "";
+}
+
+function nodeStem(n){
+  var el = n.querySelector(".mark_name") || n.querySelector(".qtContent, .stem");
+  var s = cleanText(el ? el.innerText : (n.innerText || ""));
+  s = s.replace(/^\s*\d+\s*[.、)．]?\s*/, "");
+  // 去掉平台加的题型/分值前缀，如「(单选题, 2分)」「（程序填空题, 7分）」「(其它)」
+  for (var k = 0; k < 3; k++){
+    var before = s;
+    s = s.replace(/^[（(][^）)]{0,16}题\s*(?:[,，]\s*\d+\s*分)?[^）)]{0,8}[）)]\s*/, "");
+    s = s.replace(/^[（(]\s*(其它|其他)\s*[）)]\s*/, "");
+    if (s === before) break;
+  }
+  return s;
+}
+
+function nodeOptions(n){
+  var boxes = Array.prototype.slice.call(n.querySelectorAll(".answerBg"));
+  if (!boxes.length) boxes = Array.prototype.slice.call(n.querySelectorAll("li"));
+  var out = [], map = {}, seen = {};
+  boxes.forEach(function(b){
+    var sp = (b.matches && b.matches("span[data]")) ? b : b.querySelector("span[data]");
+    var rawData = sp ? String(sp.getAttribute("data") || "").trim() : "";
+    if (!sp && !b.querySelector(".answer_p")) return;
+    var letter = sp ? cleanText(sp.innerText).toUpperCase() : "";
+    if (!/^[A-Z]$/.test(letter)) letter = /^[A-Za-z]$/.test(rawData) ? rawData.toUpperCase() : "";
+    var key = letter || rawData;
+    if (!key || seen[key]) return;
+    var tEl = b.querySelector(".answer_p") || b;
+    var txt = cleanText(tEl.innerText || tEl.textContent || "");
+    if (tEl === b && letter) txt = txt.replace(new RegExp("^\\s*" + letter + "\\s*[.、:：]?\\s*"), "");
+    txt = txt.replace(/\s+/g, " ").trim();
+    if (!txt && b.querySelector("img")) txt = "（图片选项，无法读取文字）";
+    if (!txt || txt === letter) return;
+    seen[key] = 1;
+    map[key] = txt;
+    if (letter) map["@" + rawData.toLowerCase()] = txt;
+    out.push((letter ? letter : rawData) + ". " + txt.slice(0, 200));
+  });
+  if (!out.length){
+    Array.prototype.slice.call(n.querySelectorAll("input[type=radio], input[type=checkbox]")).forEach(function(inp){
+      var L = (inp.value || "").trim().toUpperCase();
+      if (!/^[A-Z]$/.test(L) || seen[L]) return;
+      var box = inp.closest("label, li, .answerBg, div") || inp.parentNode;
+      var txt = cleanText((box.innerText || "").replace(L, ""));
+      if (!txt) return;
+      seen[L] = 1; map[L] = txt;
+      out.push(L + ". " + txt.slice(0, 200));
+    });
+  }
+  return {lines: out, map: map};
+}
+
+function nodeBlanks(n){
+  var sz = n.querySelector('input[name^=tiankongsize]');
+  if (sz){
+    var v = parseInt(sz.value || "0", 10);
+    if (v > 0) return v;
+  }
+  var c = n.querySelectorAll('textarea[id^=answerEditor], input[id^=answerEditor]').length;
+  if (c > 0) return c;
+  return n.querySelectorAll('input[type=text], textarea').length;
+}
+
+function makeFooter(){
+  return [
+    "请只输出 JSON 数组，覆盖上面每一题：[{\"i\":1,\"answer\":\"B\"}]",
+    "answer 规则：",
+    "• 单选题：一个选项字母（A/B/C/D…），字母以题目里给出的为准",
+    "• 多选题：多个字母连写，如 ACD",
+    "• 判断题：只写「对」或「错」",
+    "• 填空题：只有 1 个空的直接给内容（字段名里的 # 原样保留，如 C#、S#）；多个空用 " + ANS_SEP + " 分隔，顺序与题目一致",
+    "• 简答题/论述题/名词解释：直接给可提交的中文答案正文，不要题号、不要 markdown",
+    "要求：先逐项判断每个选项的对错再给出答案；不同题目的答案不要雷同，不要全篇都是同一个选项。"
+  ].join("\n");
+}
+
+function blockText(q, no){
+  var L = ["第 " + no + " 题"];
+  if (q.type) L.push("【" + q.type + "】");
+  L.push(q.stem || (q.img ? "（本题题干是图片，读不到文字；请按题型给出答案，或告诉我无法作答）" : "（本题题干为空）"));
+  if (q.opts.length) L.push("选项：" + q.opts.join("  "));
+  else if (q.img && /单选|多选|判断|评价|不定项/.test(q.type || "")) L.push("选项：（选项是图片，读不到文字）");
+  if (q.img) L.push("（本题含图片；图片里的表格/数据是解题依据，若下面有「图片转写」就以转写内容为准）");
+  if (q.blanks > 1) L.push("（本题有 " + q.blanks + " 个空，答案必须给满 " + q.blanks +
+    " 段、按顺序用 " + ANS_SEP + " 分隔，例如 a" + ANS_SEP + "b；字段名里的 # 要原样保留，例如 C#；少一段就算错）");
+  else if (q.blanks === 1 && /填空/.test(q.type || "")) L.push("（本题 1 个空，直接给这个空要填的内容）");
+  return L.join("\n");
+}
+
+function grabQuestions(m){
+  var f = m.querySelector("#work-frame");
+  var doc = null;
+  try { doc = f.contentDocument; } catch(err){ doc = null; }
+  if (!doc || !doc.body) {
+    toast("页面还没加载好，或已被浏览器拦截（可改用「在浏览器打开」后手动粘贴题目）", 4000);
+    return "";
+  }
+  var nodes = Array.prototype.slice.call(
+    doc.querySelectorAll('div.questionLi, div[id^="question"], div.singleQuesId')
+  );
+  if (!nodes.length){
+    var t = (doc.body.innerText || "").replace(/\n{3,}/g, "\n\n").trim();
+    lastGrab = null;
+    return t ? t.slice(0, 6000) : "";
+  }
+  var allImgs = [];
+  var seenImg = {};
+  var qs = nodes.map(function(n){
+    var o = nodeOptions(n);
+    var img = false;
+    var mine = [];
+    try {
+      var list = n.querySelectorAll("img");
+      for (var k = 0; k < list.length; k++){
+        var el = list[k];
+        var raw = el.getAttribute("data-orig") || el.getAttribute("src") || "";
+        if (!raw) continue;
+        var abs = raw;
+        try { abs = new URL(raw, doc.baseURI).href; } catch(e){}
+        var orig = abs;
+        if (abs.indexOf("/api/img?") >= 0){
+          try { orig = decodeURIComponent(/[?&]url=([^&]+)/.exec(abs)[1]); } catch(e){ orig = abs; }
+        }
+        if (!orig || orig.indexOf("data:") === 0) continue;
+        if ((el.naturalWidth || 0) < 80 && (el.naturalHeight || 0) < 80) continue;
+        mine.push(orig);
+        if (!seenImg[orig]) { seenImg[orig] = 1; allImgs.push(orig); }
+      }
+      img = mine.length > 0;
+    } catch(e){}
+    return {type: nodeType(n), stem: nodeStem(n), opts: o.lines, optMap: o.map,
+            blanks: nodeBlanks(n), img: img, imgs: mine};
+  });
+  var intro = "以下是作业题目（可能包含单选、多选、判断、填空、简答等类型）。";
+  var blocks = qs.map(function(q, i){ return blockText(q, i + 1); });
+  var footer = makeFooter();
+  var full = [intro].concat(blocks).concat([footer]).join("\n\n");
+  lastGrab = {intro: intro, qs: qs, blocks: blocks, footer: footer, full: full,
+              imgs: allImgs,
+              imgOnly: qs.map(function(q, i){ return (q.img && !q.stem) ? (i + 1) : 0; }).filter(Boolean)};
+  return full;
+}
+
+/* ---------- 读图转写：把作业页里的图片交给视觉模型变成文字 ---------- */
+function collectImgs(m){
+  var f = m.querySelector("#work-frame");
+  var doc = null;
+  try { doc = f.contentDocument; } catch(e){ doc = null; }
+  if (!doc || !doc.body) return {doc: null, urls: []};
+  var urls = [], seen = {};
+  Array.prototype.slice.call(doc.querySelectorAll("img")).forEach(function(el){
+    var raw = el.getAttribute("data-orig") || el.getAttribute("src") || "";
+    if (!raw) return;
+    var abs = raw;
+    try { abs = new URL(raw, doc.baseURI).href; } catch(e){}
+    var orig = abs;
+    if (abs.indexOf("/api/img?") >= 0){
+      try { orig = decodeURIComponent(/[?&]url=([^&]+)/.exec(abs)[1]); } catch(e){ orig = abs; }
+    }
+    if (!orig || orig.indexOf("data:") === 0) return;
+    if ((el.naturalWidth || 0) < 80 && (el.naturalHeight || 0) < 80) return;
+    if (seen[orig]) return;
+    seen[orig] = 1;
+    urls.push(orig);
+  });
+  return {doc: doc, urls: urls};
+}
+
+function visionTranscribe(m){
+  var got = collectImgs(m);
+  var urls = got.urls;
+  if (!got.doc){ toast("页面还没加载好，等作业页出来再点"); return; }
+  if (!urls.length){ toast("这一页没有找到图片（小图标已跳过）", 3000); return; }
+  var btn = m.querySelector("#btn-vision");
+  var n = Math.min(urls.length, 6);
+  if (btn){ btn.disabled = true; btn.textContent = "读图中…"; }
+  toast("正在读 " + n + " 张图，稍等（取决于接口速度，可能要半分钟）", 4000);
+  api("/api/vision", {images: urls.slice(0, 6), ref: got.doc.baseURI}).then(function(r){
+    if (btn){ btn.disabled = false; btn.textContent = "读图转写"; }
+    if (!r || !r.ok){
+      toast((r && r.error) || "读图失败", 6000);
+      return;
+    }
+    var box = m.querySelector("#ai-input");
+    if (!box.value.trim()) {  // 还没读题就点了读图，顺手把题目也读上来
+      var g = grabQuestions(m);
+      if (g) box.value = g;
+    }
+    var head = "【图片转写】" + (r.count ? "（" + r.count + " 张）" : "");
+    var text = (box.value ? "\n\n" : "") + head + "\n" + String(r.text || "").trim();
+    box.value = box.value + text;
+    try { box.dispatchEvent(new Event("input", {bubbles: true})); } catch(e){}
+    m.querySelector('[data-tab="ai"]').click();
+    toast("已把图片转写成文字，追加到题目内容下方", 3500);
+  });
+}
+
+function optTextFor(i, ans){
+  if (!lastGrab || !lastGrab.qs) return "";
+  var q = lastGrab.qs[i - 1];
+  if (!q || !q.optMap) return "";
+  var L = String(ans || "").trim().toUpperCase();
+  if (!/^[A-Z]$/.test(L)) return "";
+  return q.optMap[L] ? (L + "：" + q.optMap[L]) : "";
+}
+
+var ANS_SEP = "|||";
+/* 把一道题的答案拆成 n 段：优先 |||，其次 §，最后才用 #（且必须正好 n 段才敢认） */
+function splitAnswer(ans, n){
+  n = Math.max(1, parseInt(n, 10) || 1);
+  var arr = null, s2 = String(ans == null ? "" : ans);
+  if (Object.prototype.toString.call(ans) === "[object Array]"){
+    arr = ans.map(function(x){ return String(x == null ? "" : x).trim(); });
+  } else if (n <= 1){
+    return [s2.trim()];
+  } else if (s2.indexOf(ANS_SEP) >= 0){
+    arr = s2.split(ANS_SEP).map(function(x){ return x.trim(); });
+  } else if (s2.indexOf("§") >= 0){
+    arr = s2.split("§").map(function(x){ return x.trim(); });
+  } else {
+    var byHash = s2.split(/[#｜|]/).map(function(x){ return x.trim(); });
+    arr = (byHash.length === n) ? byHash : [s2.trim()];
+  }
+  arr = arr.map(function(x){ return String(x == null ? "" : x).trim(); });
+  if (arr.length > n){
+    var noEmpty = arr.filter(function(x){ return x !== ""; });
+    arr = (noEmpty.length >= n) ? noEmpty.slice(0, n) : arr.slice(0, n);
+  }
+  while (arr.length < n) arr.push("");
+  return arr;
+}
+function blanksOfAns(a){
+  var q = (lastGrab && lastGrab.qs && a) ? lastGrab.qs[parseInt(a.i, 10) - 1] : null;
+  return (q && q.blanks) || 1;
+}
+function splitBlanks(a){ return splitAnswer(a ? a.answer : "", blanksOfAns(a)); }
+
+/* 填空题有多少空就拆多少行，一行一个空，可直接改 */
+function renderAnswers(answers){
+  var html = "";
+  answers.forEach(function(a){
+    var q = (lastGrab && lastGrab.qs) ? lastGrab.qs[a.i - 1] : null;
+    var isFill = q && q.blanks > 1 && /填空/.test(q.type || "");
+    if (isFill){
+      var n = q.blanks || 1;
+      var parts = splitAnswer(a.answer, n);
+      for (var k = 0; k < n; k++){
+        html += '<div class="ans"><div class="n">第 ' + a.i + ' 题<br>第 ' + (k + 1) + ' 空</div>' +
+          '<div class="v"><input class="ans-in" data-i="' + a.i + '" data-b="' + (k + 1) + '" ' +
+          'value="' + esc(parts[k] == null ? "" : parts[k]) + '" ' +
+          'placeholder="（这一空没答案，可直接填）"></div></div>';
+      }
+      return;
+    }
+    var ex = optTextFor(a.i, a.answer);
+    html += '<div class="ans"><div class="n">第 ' + a.i + ' 题</div><div class="v">' +
+            esc(a.answer) +
+            (ex ? '<div class="muted" style="font-size:12px;margin-top:3px">' + esc(ex) + '</div>' : '') +
+            '</div></div>';
+  });
+  return html;
+}
+
+/* 用户改动某个空 → 写回 lastAnswers，点「填入作业页面」就用改后的 */
+function bindAnswerInputs(out){
+  Array.prototype.slice.call(out.querySelectorAll(".ans-in")).forEach(function(inp){
+    inp.addEventListener("input", function(){
+      var i = parseInt(inp.getAttribute("data-i"), 10);
+      var b = parseInt(inp.getAttribute("data-b"), 10);
+      if (!i || !b) return;
+      var item = null;
+      (lastAnswers || []).forEach(function(x){ if (parseInt(x.i, 10) === i) item = x; });
+      if (!item) return;
+      var q = (lastGrab && lastGrab.qs) ? lastGrab.qs[i - 1] : null;
+      var n = Math.max((q && q.blanks) || 1, b);
+      var parts = splitAnswer(item.answer, n);
+      while (parts.length < n) parts.push("");
+      parts[b - 1] = inp.value;
+      item.answer = parts.join(ANS_SEP);
+      item.edited = true;
+    });
+  });
+}
+
+function allSameLetter(answers){
+  var L = answers.filter(function(a){ return /^[A-Z]$/.test(String(a.answer || "").trim().toUpperCase()); });
+  if (L.length < 5) return false;
+  var first = String(L[0].answer).trim().toUpperCase();
+  return L.every(function(a){ return String(a.answer).trim().toUpperCase() === first; });
+}
+
+var BATCH = 6;
+
+function solveBatched(m, out, btn, mode, done){
+  var ctx = lastGrab, total = ctx.blocks.length, answers = [], pos = 0, chunks = [];
+  for (var s = 0; s < total; s += BATCH) chunks.push([s, Math.min(total, s + BATCH)]);
+  function step(){
+    if (pos >= chunks.length){ done(answers); return; }
+    var c = chunks[pos], base = c[0];
+    var blocks = ctx.blocks.slice(c[0], c[1]).map(function(b, k){
+      return b.replace(/^第 \d+ 题/, "第 " + (k + 1) + " 题");
+    });
+    out.innerHTML = '<div class="note"><span class="spin"></span>正在解题 ' + (base + 1) + '~' + c[1] +
+                    ' / ' + total + ' 题（分批处理，准确率更高）…</div>';
+    api("/api/solve", {prompt: [ctx.intro].concat(blocks).concat([ctx.footer]).join("\n\n"), mode: mode})
+      .then(function(r){
+        if (!r.ok) throw new Error(r.error || "失败了");
+        (r.answers || []).forEach(function(a){
+          answers.push({i: base + parseInt(a.i, 10), answer: a.answer});
+        });
+        pos++;
+        step();
+      })
+      .catch(function(e){
+        out.innerHTML = '<div class="note warn">' + esc(String(e.message || e)) + '</div>';
+        btn.disabled = false;
+      });
+  }
+  step();
+}
+
+function blankNeeds(answers){
+  var need = [];
+  (answers || []).forEach(function(a){
+    var q = (lastGrab && lastGrab.qs) ? lastGrab.qs[a.i - 1] : null;
+    if (!q || !q.blanks || q.blanks < 2) return;
+    var parts = splitAnswer(a.answer, q.blanks);
+    var n = parts.filter(function(x){ return x; }).length;
+    if (n < q.blanks) need.push(a);
+  });
+  return need;
+}
+
+/* 模型有时漏题、有时少给空：先补齐没作答的题，再逐题补问空不够的题 */
+function topUpBlanks(out, answers, done){
+  if (!lastGrab){ done(answers); return; }
+  var map = {}, i;
+  (answers || []).forEach(function(a){ map[parseInt(a.i, 10)] = a; });
+  function sorted(){
+    var r = [], k;
+    for (k = 1; k <= lastGrab.qs.length; k++){ if (map[k]) r.push(map[k]); }
+    return r;
+  }
+  var jobs = [];
+  for (i = 1; i <= lastGrab.qs.length; i++){
+    if (!map[i]) jobs.push({kind: "missing", i: i});
+  }
+  blankNeeds(answers).forEach(function(a){
+    if (map[parseInt(a.i, 10)]) jobs.push({kind: "blanks", a: a});
+  });
+  if (!jobs.length){ done(sorted()); return; }
+  var missN = jobs.filter(function(j){ return j.kind === "missing"; }).length;
+  out.innerHTML = '<div class="note"><span class="spin"></span>' +
+    (missN ? ("有 " + missN + " 题模型没给答案、") : "") +
+    "共 " + jobs.length + " 处要补齐，正在逐题补问（每题一次请求，慢一点）…</div>";
+  var k = 0;
+  (function one(){
+    if (k >= jobs.length){ done(sorted()); return; }
+    var job = jobs[k];
+    var idx = (job.kind === "missing") ? job.i : parseInt(job.a.i, 10);
+    var q = lastGrab.qs[idx - 1] || {};
+    var blk = (lastGrab.blocks[idx - 1] || "").replace(/^第 \d+ 题/, "第 1 题");
+    var tip;
+    if (job.kind === "missing"){
+      tip = "只解这一道题，只输出这一题的 JSON 数组。";
+      if (q.blanks > 1) tip += " 这道题有 " + q.blanks + " 个空，答案必须给满 " + q.blanks +
+        " 段，用 " + ANS_SEP + " 分隔（字段名里的 # 原样保留）。";
+    } else {
+      tip = "这道题有 " + q.blanks + " 个空，答案必须给满 " + q.blanks + " 段，用 " + ANS_SEP +
+        " 分隔（字段名里的 # 请原样保留，例如 C#）。只输出这一题的 JSON 数组。";
+    }
+    api("/api/solve", {prompt: [lastGrab.intro, blk, tip, lastGrab.footer].join("\n\n"), mode: "answer"})
+      .then(function(r){
+        var a0 = (r && r.ok && r.answers && r.answers[0]) ? r.answers[0] : null;
+        if (a0 && a0.answer != null && String(a0.answer) !== ""){
+          if (job.kind === "missing"){
+            map[idx] = {i: idx, answer: a0.answer};
+          } else {
+            var got = splitAnswer(a0.answer, q.blanks).filter(function(x){ return x; }).length;
+            if (got >= q.blanks) map[idx] = {i: idx, answer: a0.answer};
+          }
+        }
+        k++; one();
+      })
+      .catch(function(){ k++; one(); });
+  })();
+}
+
+function solve(m, mode){
+  var prompt = m.querySelector("#ai-input").value.trim();
+  if (!prompt){ toast("先读取或粘贴题目"); return; }
+  var out = m.querySelector("#ai-out");
+  var btn = m.querySelector(mode === "explain" ? "#btn-explain" : "#btn-solve");
+  btn.disabled = true;
+  out.innerHTML = '<div class="note"><span class="spin"></span>正在解题，免费通道大约要 20~60 秒…</div>';
+
+  function fail(r){
+    var extra = "";
+    if (r && r.fix === "free"){
+      extra = '<div style="margin-top:10px"><button class="btn primary small" id="btn-use-free">改用免费通道再试一次</button></div>';
+    }
+    out.innerHTML = '<div class="note warn">' + esc((r && r.error) || "失败了") + '</div>' + extra;
+    var fb = out.querySelector("#btn-use-free");
+    if (fb){
+      fb.onclick = function(){
+        fb.disabled = true;
+        fb.textContent = "正在切换…";
+        api("/api/settings", {aiMode: "free"}).then(function(){
+          fb.textContent = "已切到免费通道，正在重试…";
+          btn.disabled = false;
+          solve(m, mode);
+        }).catch(function(e){
+          fb.disabled = false;
+          fb.textContent = "切换失败，点这里重试：" + e;
+        });
+      };
+    }
+    btn.disabled = false;
+  }
+
+  function finish(answers, text){
+    if (mode === "explain"){
+      lastAnswers = [];
+      m.querySelector("#btn-fill").disabled = true;
+      out.innerHTML = '<div class="ans"><div class="v"><pre>' + esc(text || "") + '</pre></div></div>';
+      btn.disabled = false;
+      return;
+    }
+    if (answers && answers.length){
+      answers.sort(function(p, q){ return p.i - q.i; });
+      lastAnswers = answers;
+      var fb2 = m.querySelector("#btn-fill");
+      if (fb2) fb2.disabled = false;
+      out.innerHTML = renderAnswers(answers) +
+        '<div class="note" style="margin-top:10px">答案由 AI 生成，可能出错，请自己核对后再填写。填空可以在这里直接改，改完再点「填入作业页面」。</div>';
+      bindAnswerInputs(out);
+    } else {
+      out.innerHTML = '<div class="ans"><div class="v"><pre>' + esc(text || "") + '</pre></div></div>';
+    }
+    btn.disabled = false;
+  }
+
+  var useBatch = (mode === "answer" && lastGrab && lastGrab.full === prompt && lastGrab.blocks.length > BATCH);
+  if (!useBatch && mode === "answer" && lastGrab && lastGrab.full === prompt){
+    /* 题少也走分批：退回单次，但要保留选项对照 */
+  }
+
+  if (useBatch){
+    solveBatched(m, out, btn, mode, function(answers){
+      if (!answers.length){ btn.disabled = false; return; }
+      topUpBlanks(out, answers, function(ans2){
+      if (!allSameLetter(ans2)){ finish(ans2, ""); return; }
+      /* 全部选了同一个字母 —— 大概率是模型偷懒，逐题重问一次 */
+      out.innerHTML = '<div class="note"><span class="spin"></span>答案全都一样，逐题重问一遍（慢一点，但更准）…</div>';
+      var fixed = [], k = 0;
+      (function one(){
+        if (k >= Math.min(ans2.length, 15)){ finish(fixed.length ? fixed : ans2, ""); return; }
+        var a = ans2[k];
+        var blk = (lastGrab.blocks[a.i - 1] || "").replace(/^第 \d+ 题/, "第 1 题");
+        api("/api/solve", {prompt: [lastGrab.intro, blk, "只解这一道题。", lastGrab.footer].join("\n\n"), mode: "answer"})
+          .then(function(r){
+            var nx = (r.ok && r.answers && r.answers[0]) ? {i: a.i, answer: r.answers[0].answer} : a;
+            fixed.push(nx);
+            k++;
+            one();
+          })
+          .catch(function(){ fixed.push(a); k++; one(); });
+      })();
+      });
+    });
+    return;
+  }
+
+  api("/api/solve", {prompt: prompt, mode: mode}).then(function(r){
+    if (!r.ok){ fail(r); return; }
+    var got = r.answers || [];
+    if (mode !== "answer" || !lastGrab || lastGrab.full !== prompt){ finish(got, r.text || ""); return; }
+    topUpBlanks(out, got, function(ans2){ finish(ans2, ""); });
+  }).catch(function(e){
+    out.innerHTML = '<div class="note warn">接口请求失败：' + esc(String(e)) + '</div>';
+    btn.disabled = false;
+  });
+}
+
+function copy(text){
+  var ta = document.createElement("textarea");
+  ta.value = text;
+  document.body.appendChild(ta);
+  ta.select();
+  var ok = false;
+  try { ok = document.execCommand("copy"); } catch(e){ ok = false; }
+  ta.remove();
+  if (!ok && navigator.clipboard){ navigator.clipboard.writeText(text); ok = true; }
+  toast(ok ? "已复制" : "复制失败，请手动选择");
+}
+
+/* ---------------- 设置 ---------------- */
+function openSettings(){
+  var s = S.settings;
+  var m = el("div", "modal small");
+  m.innerHTML =
+    '<div class="modal-head"><h3>设置</h3><div class="spacer grow"></div>' +
+      '<button class="btn small ghost" data-act="close">关闭</button></div>' +
+    '<div class="modal-body">' +
+      '<div class="group"><div class="group-title">后台检查</div>' +
+        '<div class="row" style="gap:18px;flex-wrap:wrap">' +
+          '<label class="opt"><input type="radio" name="iv" value="15"> 每 15 分钟</label>' +
+          '<label class="opt"><input type="radio" name="iv" value="30"> 每 30 分钟</label>' +
+          '<label class="opt"><input type="radio" name="iv" value="60"> 每 60 分钟</label>' +
+        '</div>' +
+        '<label class="opt"><input type="checkbox" id="cx-auto"> 关闭浏览器后仍自动同步与提醒</label>' +
+      '</div>' +
+      '<div class="group"><div class="group-title">提醒</div>' +
+        '<label class="opt"><input type="checkbox" id="cx-24"> 提前 24 小时提醒</label>' +
+        '<label class="opt"><input type="checkbox" id="cx-2"> 提前 2 小时提醒</label>' +
+        '<label class="opt"><input type="checkbox" id="cx-0"> 截止那一刻提醒</label>' +
+        '<label class="opt"><input type="checkbox" id="cx-show"> 列表里显示已完成作业</label>' +
+      '</div>' +
+      '<div class="group"><div class="group-title">解题助手</div>' +
+        '<label class="opt"><input type="radio" name="ai" value="custom"> 自备接口（更快更准）</label>' +
+        '<label class="opt"><input type="radio" name="ai" value="free"> 免费通道（不用 Key，慢一些）</label>' +
+        '<div class="field" style="margin-top:10px"><label>接口地址，如 https://api.deepseek.com/v1</label>' +
+          '<input type="text" id="et-base" placeholder="https://api.deepseek.com/v1"></div>' +
+        '<div class="field"><label>模型名，如 deepseek-chat</label>' +
+          '<input type="text" id="et-model" placeholder="deepseek-chat"></div>' +
+        '<div class="field"><label>API Key（仅本机保存）</label>' +
+          '<input type="password" id="et-key" placeholder="sk-..."></div>' +
+        '<div class="row" style="gap:10px"><button class="btn small" id="btn-test">测试连接</button>' +
+          '<div class="status" id="ai-status" style="flex:1"></div></div>' +
+        '<div class="note warn" id="free-warn" style="margin-top:10px;display:none">免费通道为第三方公共接口，题目文本会被发送到该服务商，请自行判断是否使用。</div>' +
+      '</div>' +
+      '<div class="group"><div class="group-title">外观</div>' +
+        '<div class="muted" style="font-size:12px;margin:-2px 0 8px">排版模式</div>' +
+        '<div class="row" style="gap:18px;flex-wrap:wrap">' +
+          '<label class="opt"><input type="radio" name="lay" value="mica"> 云母效果（悬浮磨砂卡片）</label>' +
+          '<label class="opt"><input type="radio" name="lay" value="official"> 原版排版（平铺玻璃）</label>' +
+        '</div>' +
+        '<div class="muted" style="font-size:12px;margin:10px 0 8px">材质预设（两种排版都能用）</div>' +
+        '<div class="row" style="gap:18px;flex-wrap:wrap">' +
+          '<label class="opt"><input type="radio" name="gl" value="clear"> 清透（高透光）</label>' +
+          '<label class="opt"><input type="radio" name="gl" value="std"> 标准（适中）</label>' +
+          '<label class="opt"><input type="radio" name="gl" value="frost"> 磨砂（强虚化）</label>' +
+        '</div>' +
+        '<label class="opt" style="margin-top:10px"><input type="checkbox" id="cx-glow"> 地面光斑（两枚柔光反射斑，主页有漫反射光晕）</label>' +
+      '</div>' +
+      '<div class="group"><div class="group-title">其它</div>' +
+        '<div class="row" style="gap:10px;flex-wrap:wrap">' +
+          '<button class="btn small" id="btn-agg">用户协议与隐私说明</button>' +
+          '<button class="btn small" id="btn-relogin">重新登录（打开登录窗口）</button>' +
+          '<button class="btn small danger" id="btn-clear">清除登录与本地数据</button>' +
+        '</div>' +
+      '</div>' +
+    '</div>' +
+    '<div class="modal-foot"><button class="btn ghost" data-act="close">取消</button>' +
+      '<button class="btn primary" id="btn-save">保存</button></div>';
+  $("modals").appendChild(m);
+
+  var iv = s.interval || 30;
+  var r = m.querySelector('input[name=iv][value="' + iv + '"]');
+  if (r) r.checked = true;
+  m.querySelector("#cx-auto").checked = s.autoSync !== false;
+  m.querySelector("#cx-24").checked = !!s.lead24;
+  m.querySelector("#cx-2").checked = !!s.lead2;
+  m.querySelector("#cx-0").checked = !!s.lead0;
+  m.querySelector("#cx-show").checked = !!s.showDone;
+  var lay = s.layout || "mica";
+  var lr = m.querySelector('input[name=lay][value="' + lay + '"]');
+  if (lr) lr.checked = true;
+  var gls = s.glass || "std";
+  var gr = m.querySelector('input[name=gl][value="' + gls + '"]');
+  if (gr) gr.checked = true;
+  m.querySelector("#cx-glow").checked = s.glow !== false;
+  /* 选了立刻生效，能边看边挑 */
+  function preview(){
+    var L = (m.querySelector('input[name=lay]:checked') || {}).value || "mica";
+    var G = (m.querySelector('input[name=gl]:checked') || {}).value || "std";
+    applyAppearance({layout: L, glass: G, glow: m.querySelector("#cx-glow").checked});
+  }
+  Array.prototype.slice.call(m.querySelectorAll('input[name=lay],input[name=gl]'))
+    .forEach(function(i){ i.addEventListener("change", preview); });
+  m.querySelector("#cx-glow").addEventListener("change", preview);
+  var mode = s.aiMode || "custom";
+  var ar = m.querySelector('input[name=ai][value="' + mode + '"]');
+  if (ar) ar.checked = true;
+  m.querySelector("#et-base").value = s.aiBase || "";
+  m.querySelector("#et-model").value = s.aiModel || "";
+  m.querySelector("#et-key").value = (s.aiKey === "***") ? "" : (s.aiKey || "");
+  m.querySelector("#et-key").placeholder = (s.aiKey === "***") ? "已保存（留空则不修改）" : "sk-...";
+
+  function refreshMode(){
+    var cur = m.querySelector('input[name=ai]:checked').value;
+    var free = (cur === "free");
+    ["#et-base", "#et-model", "#et-key"].forEach(function(sel){
+      var e = m.querySelector(sel);
+      e.disabled = free;
+      e.style.opacity = free ? "0.45" : "1";
+    });
+    m.querySelector("#free-warn").style.display = free ? "block" : "none";
+  }
+  m.querySelectorAll('input[name=ai]').forEach(function(x){ x.onchange = refreshMode; });
+  refreshMode();
+
+  m.addEventListener("click", function(e){
+    if (e.target === m) m.remove();
+    if (e.target.closest("[data-act=close]")) m.remove();
+  });
+
+  m.querySelector("#btn-test").onclick = function(){
+    var st = m.querySelector("#ai-status");
+    st.className = "status"; st.textContent = "正在测试…";
+    fetch("/api/settings", {method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify(collect(m, true))}).then(function(){
+      return api("/api/testai", {});
+    }).then(function(r){
+      if (r.ok){ st.className = "status ok"; st.textContent = "连接成功：" + (r.reply || "ok"); }
+      else { st.className = "status err"; st.textContent = "连接失败：" + (r.error || ""); }
+    });
+  };
+  m.querySelector("#btn-agg").onclick = function(){
+    m.remove();
+    show("view-agree");
+    $("btn-agree").textContent = "返回";
+  };
+  m.querySelector("#btn-relogin").onclick = function(){
+    m.remove();
+    S.logged = false;
+    show("view-login");
+  };
+  m.querySelector("#btn-clear").onclick = function(){
+    if (!confirm("将清除本机保存的登录状态、作业记录和提醒。学习通账号本身不受影响。继续？")) return;
+    api("/api/clear", {}).then(function(){
+      m.remove();
+      toast("已清除，请重新登录");
+      return reload().then(function(){ show("view-login"); });
+    });
+  };
+  m.querySelector("#btn-save").onclick = function(){
+    api("/api/settings", collect(m, false)).then(function(){
+      m.remove();
+      toast("已保存");
+      return reload();
+    });
+  };
+}
+
+function collect(m, testOnly){
+  var body = {
+    interval: parseInt((m.querySelector('input[name=iv]:checked')||{}).value || "30", 10),
+    autoSync: m.querySelector("#cx-auto").checked,
+    lead24: m.querySelector("#cx-24").checked,
+    lead2: m.querySelector("#cx-2").checked,
+    lead0: m.querySelector("#cx-0").checked,
+    showDone: m.querySelector("#cx-show").checked,
+    aiMode: m.querySelector('input[name=ai]:checked').value,
+    aiBase: m.querySelector("#et-base").value.trim(),
+    aiModel: m.querySelector("#et-model").value.trim(),
+    layout: (m.querySelector('input[name=lay]:checked') || {}).value || "mica",
+    glass: (m.querySelector('input[name=gl]:checked') || {}).value || "std",
+    glow: m.querySelector("#cx-glow").checked
+  };
+  var key = m.querySelector("#et-key").value.trim();
+  if (key) body.aiKey = key;
+  return body;
+}
+
+/* ---------------- 启动 ---------------- */
+var BOOT_MS = 4000;          /* 开机动画时长：4 秒 */
+
+function bootBubbles(){
+  var box = document.querySelector("#splash .fx");
+  if (!box) return;
+  for (var i = 0; i < 18; i++){
+    var b = document.createElement("span");
+    var s = 5 + Math.random() * 13;
+    b.className = "bubble";
+    b.style.width = s + "px";
+    b.style.height = s + "px";
+    b.style.left = (3 + Math.random() * 93) + "%";
+    b.style.animationDuration = (5.5 + Math.random() * 4.5) + "s";
+    b.style.animationDelay = (-Math.random() * 5) + "s";
+    b.style.opacity = String(0.3 + Math.random() * 0.55);
+    box.appendChild(b);
+  }
+}
+
+function bootEnd(){
+  var sp = $("splash");
+  /* 4 秒动画结束：先把角色和文字化开，再让整片天光落成主页背景 */
+  document.body.classList.add("revealed");
+  if (sp){
+    sp.classList.add("phase2");                       /* 深蓝盖上来，角色化进背景 */
+    setTimeout(function(){ sp.classList.add("out"); }, 520);   /* 再整体淡出，主页浮出 */
+    setTimeout(function(){
+      sp.style.display = "none";
+      sp.classList.remove("out", "phase2");
+    }, 1700);
+  }
+  if (localStorage.getItem("forceLogin") === "1"){
+    localStorage.removeItem("forceLogin");
+    show("view-login");
+  } else {
+    route();
+  }
+}
+
+function boot(){
+  bootBubbles();
+  var t0 = Date.now();
+  reload().then(function(){
+    var wait = Math.max(0, BOOT_MS - (Date.now() - t0));
+    setTimeout(bootEnd, wait);
+  }).catch(function(e){
+    var sp2 = $("splash");
+    if (sp2) sp2.style.display = "none";
+    document.body.innerHTML = '<div class="page"><div class="note warn">' +
+      '连不上本地服务，请确认「启动小肥鱼.bat」是否在运行。<br>' + esc(String(e)) + '</div></div>';
+  });
+}
+
+document.addEventListener("DOMContentLoaded", function(){
+  var mod = document.createElement("div");
+  mod.id = "modals";
+  document.body.appendChild(mod);
+
+  $("btn-agree").onclick = function(){
+    if (this.textContent === "返回"){
+      this.textContent = "同意并继续";
+      route();
+      return;
+    }
+    api("/api/agree", {}).then(function(){
+      S.settings.agreed = true;
+      route();
+    });
+  };
+  $("btn-disagree").onclick = function(){
+    document.body.innerHTML = '<div class="page" style="max-width:520px;padding-top:80px;text-align:center">' +
+      '<h2>已退出</h2><p class="muted">你可以直接关闭这个页面。后台服务可用「停止小肥鱼.bat」关闭。</p></div>';
+  };
+  // 检查暂存：逐个打开未交作业，看有没有存过草稿
+  $("btn-drafts").onclick = function(){
+    var btn = this;
+    var opens = S.tasks.filter(function(t){ return !t.done && t.url; });
+    if (!opens.length){ toast("没有未交作业需要检查"); return; }
+    var queue = opens.slice(0, 30);
+    var old = btn.textContent;
+    btn.disabled = true;
+    var probe = document.getElementById("draft-probe");
+    if (!probe){
+      probe = document.createElement("iframe");
+      probe.id = "draft-probe";
+      probe.style.cssText = "position:fixed;left:-9999px;top:0;width:1180px;height:900px;opacity:0;pointer-events:none;border:0";
+      document.body.appendChild(probe);
+    }
+    var idx = 0, found = 0;
+    function next(){
+      if (idx >= queue.length){
+        btn.disabled = false; btn.textContent = old;
+        probe.src = "about:blank";
+        api("/api/setdrafts", {drafts: S.drafts || {}}).catch(function(){});
+        toast("查了 " + queue.length + " 个未交作业，其中 " + found + " 个存过草稿");
+        render();
+        return;
+      }
+      var t = queue[idx++];
+      btn.textContent = "检查 " + idx + "/" + queue.length;
+      var done = false;
+      function finish(has){
+        if (done) return;
+        done = true;
+        S.drafts = S.drafts || {};
+        if (has){ S.drafts[String(t.workId)] = true; found++; }
+        else if (!S.drafts[String(t.workId)]) S.drafts[String(t.workId)] = false;
+        next();
+      }
+      probe.onload = function(){
+        setTimeout(function(){
+          var doc = null;
+          try{ doc = probe.contentDocument; }catch(e){}
+          finish(scanDraftFromDoc(doc));
+        }, 900);
+      };
+      probe.src = "/api/page?url=" + encodeURIComponent(t.url);
+      setTimeout(function(){ finish(false); }, 12000);   /* 兜底：某页卡住就跳过 */
+    }
+    next();
+  };
+
+  // ① 打开受控登录窗口（程序自己接管 Cookie，不用手抄）
+  $("btn-open-login").onclick = function(){
+    var btn = this;
+    btn.disabled = true; btn.textContent = "正在打开登录窗口…";
+    api("/api/login/open", {}).then(function(r){
+      btn.disabled = false; btn.textContent = "① 打开登录窗口去登录";
+      if (!r.ok){ toast(r.error || "打不开登录窗口"); return; }
+      toast("登录窗口已打开，在里面登录学习通；登录好了回来点②");
+    }).catch(function(){
+      btn.disabled = false; btn.textContent = "① 打开登录窗口去登录";
+      toast("打不开登录窗口");
+    });
+  };
+
+  // ② 读取登录状态并同步
+  $("btn-login-done").onclick = function(){
+    var btn = this;
+    btn.disabled = true; btn.textContent = "正在读取登录状态…";
+    api("/api/login/capture", {}).then(function(r){
+      btn.disabled = false; btn.textContent = "② 我登录好了，开始同步";
+      if (!r.ok){ toast(r.error || "没读到登录状态"); return; }
+      S.logged = true;
+      show("view-main");
+      toast("已读取 " + r.count + " 项登录凭证，开始同步…");
+      setTimeout(sync, 200);
+    }).catch(function(){
+      btn.disabled = false; btn.textContent = "② 我登录好了，开始同步";
+      toast("读取登录状态失败");
+    });
+  };
+
+  // 高级：手动粘贴 Cookie（保留兜底）
+  $("btn-cookie-save").onclick = function(){
+    var c = $("cookie-input").value.trim();
+    if (!c){ toast("先把 Cookie 粘贴进来"); return; }
+    api("/api/cookie", {cookie:c}).then(function(){
+      S.logged = true;
+      show("view-main");
+      toast("已保存登录状态，开始同步…");
+      setTimeout(sync, 300);
+    });
+  };
+  $("btn-login-later").onclick = function(){
+    show("view-main");
+    S.logged = false;
+    render();
+  };
+  $("btn-settings").onclick = openSettings;
+  $("btn-sync").onclick = sync;
+  document.querySelectorAll(".chip").forEach(function(c){
+    c.onclick = function(){
+      document.querySelectorAll(".chip").forEach(function(x){ x.classList.remove("on"); });
+      c.classList.add("on");
+      FILTER = c.dataset.f;
+      render();
+    };
+  });
+
+  // 每 20 秒刷新状态（后台自动同步后列表会自动更新）
+  setInterval(function(){
+    if (!S.logged || document.hidden) return;
+    api("/api/state").then(function(s){
+      var oldErr = S.lastError, oldN = S.tasks.length, oldSync = S.lastSync;
+      S = s;
+      if (s.lastSync !== oldSync || s.tasks.length !== oldN || s.lastError !== oldErr){
+        render();
+        if (s.tasks.length > oldN && oldN > 0) toast("发现新的作业");
+      }
+    }).catch(function(){});
+  }, 20000);
+
+  boot();
+});
+</script>
+</body>
+</html>
