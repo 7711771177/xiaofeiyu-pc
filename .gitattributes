@@ -1,0 +1,10 @@
+* text=auto
+
+# Windows 批处理必须是 CRLF，否则 goto/label 可能失效
+*.bat text eol=crlf
+*.ps1 text eol=crlf
+
+# 二进制
+*.png binary
+*.ico binary
+*.jpg binary
